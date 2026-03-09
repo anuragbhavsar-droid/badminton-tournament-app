@@ -6,6 +6,11 @@ import io
 from collections import defaultdict
 import hashlib
 from datetime import datetime
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Page Configuration
 st.set_page_config(page_title="Badminton Tournament Pro", layout="wide")
@@ -27,8 +32,20 @@ def initialize_users():
     
     # Always ensure the default superuser exists (in case it was deleted)
     if 'ritesha' not in st.session_state.users:
+        # Get superuser password from Streamlit secrets or environment variable
+        try:
+            # Try Streamlit secrets first (for Streamlit Cloud)
+            superuser_password = st.secrets.get("SUPERUSER_PASSWORD")
+        except (FileNotFoundError, KeyError):
+            # Fallback to environment variable (for local development)
+            superuser_password = os.getenv('SUPERUSER_PASSWORD')
+        
+        if not superuser_password:
+            st.error("⚠️ SUPERUSER_PASSWORD not configured! Please set it in Streamlit secrets or .env file.")
+            st.stop()
+            
         st.session_state.users['ritesha'] = {
-            'password_hash': hash_password('66863'),
+            'password_hash': hash_password(superuser_password),
             'role': 'superuser',
             'created_by': 'system',
             'created_at': datetime.now().isoformat()
