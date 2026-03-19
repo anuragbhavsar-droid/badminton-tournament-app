@@ -1,3 +1,6 @@
+# Environment and secrets (do not commit)
+.env
+
 # Streamlit configuration
 .streamlit/
 
@@ -28,3 +31,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Database (local SQLite)
+*.db
+tournament.db
