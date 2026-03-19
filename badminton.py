@@ -25,12 +25,6 @@ DEFAULT_SUBGROUP_NAMES = {'subgroup1': 'Deciders (0-5)', 'subgroup2': 'Chokers (
 DEFAULT_DECIDERS_MIN, DEFAULT_DECIDERS_MAX = 0, 5   # subgroup1 (lower skills)
 DEFAULT_CHOKERS_MIN, DEFAULT_CHOKERS_MAX = 6, 15   # subgroup2 (higher skills)
 
-# Chokers (subgroup2): these two players must always be in the same group; balance is preserved
-MUST_BE_TOGETHER_CHOKERS = ("Ritesh Agrawal", "Milind Pradhan")
-
-# These two players must never be in the same team/group
-MUST_BE_SEPARATE = ("Anurag Bhavsar", "Pramod Tiwari")
-
 # Funky default group names with bracketed group letter (A–F)
 DEFAULT_GROUP_NAMES = {
     "Group A": "Thunder Shuttles (A)",
@@ -707,18 +701,11 @@ def auto_balance_groups(players_df, min_females_per_group=None, max_females_per_
             group_females = female_count_per_group + (1 if i < female_remainder else 0)
             female_distribution.append(group_females)
     
-    def _group_contains_name(gidx, name):
-        return any((p.get('name', p['name']) if hasattr(p, 'get') else p['name']) == name for p in groups[group_keys[gidx]]['players'])
-    
-    # Assign females using skill balancing (respect MUST_BE_SEPARATE)
+    # Assign females using skill balancing
     female_idx = 0
     while female_idx < len(female_players):
         player = female_players.iloc[female_idx]
-        pname = player['name']
-        other_separate = (MUST_BE_SEPARATE[1] if pname == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) if pname in MUST_BE_SEPARATE else None
-        candidates = [(i, groups[group_keys[i]]['total_skill']) for i in range(6) if female_distribution[i] > 0 and (other_separate is None or not _group_contains_name(i, other_separate))]
-        if not candidates:
-            candidates = [(i, groups[group_keys[i]]['total_skill']) for i in range(6) if female_distribution[i] > 0]
+        candidates = [(i, groups[group_keys[i]]['total_skill']) for i in range(6) if female_distribution[i] > 0]
         if not candidates:
             break
         candidates.sort(key=lambda x: x[1])
@@ -729,16 +716,12 @@ def auto_balance_groups(players_df, min_females_per_group=None, max_females_per_
         female_distribution[group_idx] -= 1
         female_idx += 1
     
-    # Step 2: Distribute males using skill-based optimization (respect MUST_BE_SEPARATE)
+    # Step 2: Distribute males using skill-based optimization
     remaining_spots = [10 - len(groups[key]['players']) for key in group_keys]
     male_idx = 0
     while male_idx < len(male_players):
         player = male_players.iloc[male_idx]
-        pname = player['name']
-        other_separate = (MUST_BE_SEPARATE[1] if pname == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) if pname in MUST_BE_SEPARATE else None
-        available_groups = [(i, groups[group_keys[i]]['total_skill']) for i in range(6) if remaining_spots[i] > 0 and (other_separate is None or not _group_contains_name(i, other_separate))]
-        if not available_groups:
-            available_groups = [(i, groups[group_keys[i]]['total_skill']) for i in range(6) if remaining_spots[i] > 0]
+        available_groups = [(i, groups[group_keys[i]]['total_skill']) for i in range(6) if remaining_spots[i] > 0]
         if not available_groups:
             break
         available_groups.sort(key=lambda x: x[1])
@@ -776,13 +759,6 @@ def auto_balance_groups(players_df, min_females_per_group=None, max_females_per_
             
             for i, max_player in enumerate(max_group['players']):
                 for j, min_player in enumerate(min_group['players']):
-                    # Never swap if it would put MUST_BE_SEPARATE pair in the same group
-                    max_name = max_player.get('name', max_player['name'])
-                    min_name = min_player.get('name', min_player['name'])
-                    if max_name in MUST_BE_SEPARATE and any((p.get('name', p['name']) if hasattr(p, 'get') else p['name']) == (MUST_BE_SEPARATE[1] if max_name == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) for p in min_group['players']):
-                        continue
-                    if min_name in MUST_BE_SEPARATE and any((p.get('name', p['name']) if hasattr(p, 'get') else p['name']) == (MUST_BE_SEPARATE[1] if min_name == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) for p in max_group['players']):
-                        continue
                     # Only swap same gender
                     if max_player['gender'] != min_player['gender']:
                         continue
@@ -898,19 +874,8 @@ def auto_balance_subgroups(players_df, subgroup1_min, subgroup1_max, subgroup2_m
         if len(players_list) == 0:
             return
         
-        # Chokers: keep Ritesh Agrawal and Milind Pradhan in the same group (balance preserved via initial_assignments)
         initial_assignments = None
-        if subgroup_type == 'subgroup2':
-            names = set(players_list['name'].tolist())
-            if names.issuperset(MUST_BE_TOGETHER_CHOKERS):
-                pair_df = players_list[players_list['name'].isin(MUST_BE_TOGETHER_CHOKERS)]
-                remaining = players_list[~players_list['name'].isin(MUST_BE_TOGETHER_CHOKERS)].reset_index(drop=True)
-                pair_list = pair_df.to_dict('records')
-                group_idx = 0  # group with current min subgroup2 total (all 0 at start)
-                initial_assignments = [[] for _ in range(num_groups)]
-                initial_assignments[group_idx] = pair_list
-                players_list = remaining
-        
+
         # Separate by gender first if constraints are specified
         if min_females_per_group is not None and max_females_per_group is not None:
             # If pair was extracted, pre-fill group 0 so we don't overfill it
@@ -930,14 +895,6 @@ def auto_balance_subgroups(players_df, subgroup1_min, subgroup1_max, subgroup2_m
             distribute_with_gender_constraints(female_players, male_players, subgroup_type, target_count_per_group, need_per_group=need_per_group)
         else:
             distribute_by_skill_only(players_list, subgroup_type, target_count_per_group, initial_assignments)
-    
-    def group_contains_player_any_subgroup(group_idx, player_name):
-        """True if this group (either subgroup) already has this player."""
-        gname = group_keys[group_idx]
-        for sg in ('subgroup1', 'subgroup2'):
-            if any(p.get('name') == player_name for p in groups[gname][sg]['players']):
-                return True
-        return False
     
     def distribute_with_gender_constraints(female_players, male_players, subgroup_type, target_count_per_group, need_per_group=None):
         """Distribute players respecting gender constraints. need_per_group: optional list of max additional players per group (when e.g. pair pre-filled)."""
@@ -964,18 +921,14 @@ def auto_balance_subgroups(players_df, subgroup1_min, subgroup1_max, subgroup2_m
                 female_distribution[i] += add_count
                 remaining_females -= add_count
         
-        # Assign females using skill balancing within constraints (respect MUST_BE_SEPARATE)
+        # Assign females using skill balancing within constraints
         female_idx = 0
         female_records = female_players.to_dict('records')
         while female_idx < len(female_records):
             player = female_records[female_idx]
-            pname = player.get('name', '')
-            other_separate = (MUST_BE_SEPARATE[1] if pname == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) if pname in MUST_BE_SEPARATE else None
             candidates = []
             for i in range(num_groups):
                 if female_distribution[i] <= 0:
-                    continue
-                if other_separate and group_contains_player_any_subgroup(i, other_separate):
                     continue
                 skill_total = groups[group_keys[i]][subgroup_type]['total_skill']
                 candidates.append((skill_total, female_distribution[i], i))
@@ -992,19 +945,15 @@ def auto_balance_subgroups(players_df, subgroup1_min, subgroup1_max, subgroup2_m
             female_distribution[group_idx] -= 1
             female_idx += 1
         
-        # Assign males to fill remaining spots (respect MUST_BE_SEPARATE)
+        # Assign males to fill remaining spots
         male_records = male_players.to_dict('records')
         male_idx = 0
         while male_idx < len(male_records):
             player = male_records[male_idx]
-            pname = player.get('name', '')
-            other_separate = (MUST_BE_SEPARATE[1] if pname == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) if pname in MUST_BE_SEPARATE else None
             available_groups = []
             for i in range(num_groups):
                 current_count = len(groups[group_keys[i]][subgroup_type]['players'])
                 if current_count < target_count_per_group:
-                    if other_separate and group_contains_player_any_subgroup(i, other_separate):
-                        continue
                     skill_total = groups[group_keys[i]][subgroup_type]['total_skill']
                     available_groups.append((skill_total, current_count, i))
             if not available_groups:
@@ -1025,35 +974,21 @@ def auto_balance_subgroups(players_df, subgroup1_min, subgroup1_max, subgroup2_m
         sorted_players = players_list.sort_values('skill_level', ascending=False).reset_index(drop=True)
         player_records = sorted_players.to_dict('records')
         
-        # Initialize group assignments (pre-fill when keeping a pair together in subgroup2)
+        # Initialize group assignments (optional pre-fill per group)
         if initial_assignments is not None:
             group_assignments = [list(init) for init in initial_assignments]
         else:
             group_assignments = [[] for _ in range(num_groups)]
-        
-        def group_contains_player(group_idx, player_name):
-            """True if this group (either subgroup) already has this player."""
-            gname = group_keys[group_idx]
-            for sg in ('subgroup1', 'subgroup2'):
-                if any(p.get('name') == player_name for p in groups[gname][sg]['players']):
-                    return True
-            return False
-        
+
         # Distribute players using a skill-balancing algorithm
         for i, player in enumerate(player_records):
             # Find the group with the lowest current total skill for this subgroup
             group_skills = []
-            pname = player.get('name', '')
-            other_separate = None
-            if pname in MUST_BE_SEPARATE:
-                other_separate = MUST_BE_SEPARATE[1] if pname == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]
             for j in range(num_groups):
                 current_skill = sum(p['skill_level'] for p in group_assignments[j])
                 current_count = len(group_assignments[j])
                 # Only consider groups that haven't reached their target count
                 if current_count < target_count_per_group:
-                    if other_separate and group_contains_player(j, other_separate):
-                        continue
                     group_skills.append((current_skill, j))
             
             if group_skills:
@@ -1110,16 +1045,6 @@ def auto_balance_subgroups(players_df, subgroup1_min, subgroup1_max, subgroup2_m
             
             for i, max_player in enumerate(max_group['players']):
                 for j, min_player in enumerate(min_group['players']):
-                    # Chokers: never swap one of the must-stay-together pair (would split them)
-                    if subgroup_type == 'subgroup2' and (
-                        max_player.get('name') in MUST_BE_TOGETHER_CHOKERS or min_player.get('name') in MUST_BE_TOGETHER_CHOKERS
-                    ):
-                        continue
-                    # Never swap if it would put the must-be-separate pair in the same group
-                    if max_player.get('name') in MUST_BE_SEPARATE and any(p.get('name') == (MUST_BE_SEPARATE[1] if max_player.get('name') == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) for p in min_group['players']):
-                        continue
-                    if min_player.get('name') in MUST_BE_SEPARATE and any(p.get('name') == (MUST_BE_SEPARATE[1] if min_player.get('name') == MUST_BE_SEPARATE[0] else MUST_BE_SEPARATE[0]) for p in max_group['players']):
-                        continue
                     # Only swap same gender
                     if max_player['gender'] != min_player['gender']:
                         continue
