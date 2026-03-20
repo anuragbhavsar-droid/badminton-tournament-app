@@ -1,15 +1,40 @@
 """
 Database layer for Badminton Tournament Manager.
-Uses Supabase (PostgreSQL). Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env.
+Uses Supabase (PostgreSQL). Set SUPABASE_URL and SUPABASE_SERVICE_KEY in:
+  - .env (local), and/or
+  - .streamlit/secrets.toml, and/or
+  - Streamlit Community Cloud → App Settings → Secrets
 Run supabase_schema.sql in Supabase SQL Editor once to create tables.
 Persists full match information per game in tournament_matches (data_json).
 """
 import json
 import os
 import random
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
+
+
+def _secret(name: str) -> str:
+    """Read credential from env first, then Streamlit secrets (deploy / local secrets.toml)."""
+    v = os.getenv(name, "").strip()
+    if v:
+        return v
+    try:
+        import streamlit as st
+
+        if hasattr(st, "secrets") and name in st.secrets:
+            return str(st.secrets[name]).strip()
+    except Exception:
+        pass
+    return ""
+
+
+def get_supabase_credentials() -> Tuple[str, str]:
+    """Return (url, service_role_key) for Supabase."""
+    url = _secret("SUPABASE_URL")
+    key = _secret("SUPABASE_SERVICE_KEY") or _secret("SUPABASE_KEY")
+    return url, key
 
 
 def _normalize_match_for_db(m: Any, match_index: int) -> Dict[str, Any]:
@@ -90,15 +115,16 @@ def _get_supabase():
     global _supabase
     if _supabase is not None:
         return _supabase
-    url = os.getenv("SUPABASE_URL", "").strip()
-    key = os.getenv("SUPABASE_SERVICE_KEY", "").strip() or os.getenv("SUPABASE_KEY", "").strip()
+    url, key = get_supabase_credentials()
     if not url or not key:
         raise ValueError(
-            "SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_KEY) must be set in .env. "
-            "Get them from Supabase Dashboard → Project Settings → API."
+            "SUPABASE_URL and SUPABASE_SERVICE_KEY (or SUPABASE_KEY) must be set in .env and/or "
+            "Streamlit secrets (.streamlit/secrets.toml or Cloud). "
+            "Get values from Supabase Dashboard → Project Settings → API."
         )
     # Optional: disable SSL verification (e.g. for self-signed / corporate certificates)
-    verify_ssl = os.getenv("SUPABASE_VERIFY_SSL", "true").strip().lower() not in ("false", "0", "no")
+    verify_raw = _secret("SUPABASE_VERIFY_SSL") or os.getenv("SUPABASE_VERIFY_SSL", "true")
+    verify_ssl = verify_raw.strip().lower() not in ("false", "0", "no")
     from supabase import create_client
     if verify_ssl:
         _supabase = create_client(url, key)

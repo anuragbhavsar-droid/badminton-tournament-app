@@ -57,7 +57,24 @@ A comprehensive web application built with Streamlit for managing badminton tour
    - `SUPABASE_URL` – your project URL (e.g. `https://xxxxx.supabase.co`)
    - `SUPABASE_SERVICE_KEY` – the **service_role** key (not the anon key) so the app can read/write all data.
 
-### Superuser password (Streamlit secrets)
+### Supabase + Streamlit secrets
+
+The app reads **`SUPABASE_URL`** and **`SUPABASE_SERVICE_KEY`** (or **`SUPABASE_KEY`**) from:
+
+1. **Environment variables** (e.g. `.env` when running locally with `load_dotenv()`), then  
+2. **`st.secrets`** if env is empty — so the same keys work in **`.streamlit/secrets.toml`** and in **Streamlit Community Cloud → App → Settings → Secrets**.
+
+Put this in **`secrets.toml` / Cloud Secrets** (with your real values):
+
+```toml
+SUPERUSER_PASSWORD = "..."
+SUPABASE_URL = "https://xxxx.supabase.co"
+SUPABASE_SERVICE_KEY = "eyJ..."   # service_role key from Supabase → Project Settings → API
+```
+
+You can keep using **`.env` for Supabase only** locally if you prefer; you do not need to duplicate keys if they are already in env.
+
+### Superuser password (Streamlit secrets only)
 
 The default superuser (`ritesha`) password is **not** read from `.env`. Set **`SUPERUSER_PASSWORD`** in:
 

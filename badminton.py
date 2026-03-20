@@ -411,12 +411,10 @@ def _push_full_state_to_supabase() -> tuple:
     Persist entire session state to Supabase (same payload as auto_save).
     Returns (success: bool, detail: str | None).
     - (True, None) — saved to Supabase
-    - (True, "local_only") — no Supabase in .env; session only
+    - (True, "local_only") — no Supabase URL/key in env or Streamlit secrets; session only
     - (False, error_message) — Supabase configured but save failed
     """
-    import os
-    url = os.getenv("SUPABASE_URL", "").strip()
-    key = (os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY") or "").strip()
+    url, key = db.get_supabase_credentials()
     if not url or not key:
         return True, "local_only"
     try:
