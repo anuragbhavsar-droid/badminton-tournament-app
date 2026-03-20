@@ -250,16 +250,19 @@ def initialize_users():
     
     # Always ensure the default superuser exists (in case it was deleted)
     if 'ritesha' not in st.session_state.users:
-        # Get superuser password from Streamlit secrets or environment variable
+        # Superuser password must come from Streamlit secrets only (not .env)
+        superuser_password = None
         try:
-            # Try Streamlit secrets first (for Streamlit Cloud)
-            superuser_password = st.secrets.get("SUPERUSER_PASSWORD")
-        except (FileNotFoundError, KeyError):
-            # Fallback to environment variable (for local development)
-            superuser_password = os.getenv('SUPERUSER_PASSWORD')
-        
-        if not superuser_password:
-            st.error("⚠️ SUPERUSER_PASSWORD not configured! Please set it in Streamlit secrets or .env file.")
+            superuser_password = st.secrets["SUPERUSER_PASSWORD"]
+        except (KeyError, FileNotFoundError, TypeError):
+            pass
+
+        if not superuser_password or not str(superuser_password).strip():
+            st.error(
+                "⚠️ **SUPERUSER_PASSWORD** is not set. Add it to **`.streamlit/secrets.toml`** "
+                "(local) or **Streamlit Cloud → App → Settings → Secrets** (deployed). "
+                "Do not use `.env` for this value."
+            )
             st.stop()
             
         st.session_state.users['ritesha'] = {

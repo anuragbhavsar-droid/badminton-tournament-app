@@ -72,7 +72,7 @@ pip install -r requirements.txt
 streamlit run badminton.py
 ```
 
-Set `SUPERUSER_PASSWORD` in .env or Streamlit secrets.
+Set `SUPERUSER_PASSWORD` in Streamlit secrets only (`.streamlit/secrets.toml` or Cloud Secrets), not in `.env`.
 
 **Technical Details**
 
@@ -156,7 +156,7 @@ Use this if your Confluence has **Insert → Markup** (or similar) and you can p
 <h2>Installation</h2>
 <pre>pip install -r requirements.txt
 streamlit run badminton.py</pre>
-<p>Set <code>SUPERUSER_PASSWORD</code> in .env or Streamlit secrets.</p>
+<p>Set <code>SUPERUSER_PASSWORD</code> in Streamlit secrets only (not <code>.env</code>).</p>
 
 <h2>Technical Details</h2>
 <ul>

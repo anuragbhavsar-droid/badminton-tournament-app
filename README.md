@@ -56,6 +56,16 @@ A comprehensive web application built with Streamlit for managing badminton tour
 3. **Configure `.env`** with:
    - `SUPABASE_URL` – your project URL (e.g. `https://xxxxx.supabase.co`)
    - `SUPABASE_SERVICE_KEY` – the **service_role** key (not the anon key) so the app can read/write all data.
+
+### Superuser password (Streamlit secrets)
+
+The default superuser (`ritesha`) password is **not** read from `.env`. Set **`SUPERUSER_PASSWORD`** in:
+
+- **Local:** copy `streamlit-secrets.example.toml` to **`.streamlit/secrets.toml`** next to `badminton.py` and edit the value.
+- **Streamlit Community Cloud:** **App → Settings → Secrets** — add `SUPERUSER_PASSWORD = "..."` in TOML format.
+
+Remove any `SUPERUSER_PASSWORD` line from `.env` if you had one.
+
 4. **Migration**: If you have existing `tournament_players.json` and/or `tournament_data.json`, the app will migrate them into Supabase automatically on first load (when Supabase is configured).
 5. **Standings table (full columns)**: New installs get all columns from `supabase_schema.sql`. If your project already has the old `standings` table (only `clash_wins` / `total_points`), run **`standings_migration.sql`** once in the SQL Editor so saves include matches played, clash won, points, sets, rally points, etc.
 
@@ -65,6 +75,27 @@ A comprehensive web application built with Streamlit for managing badminton tour
 pip install -r requirements.txt
 streamlit run badminton.py
 ```
+
+## Deploy on Streamlit Community Cloud
+
+1. Push this repo to **GitHub** (the app file is **`badminton.py`** at the repository root).
+2. Go to [share.streamlit.io](https://share.streamlit.io) → **New app** → sign in with GitHub.
+3. **Repository:** choose `your-username/badminton-tournament-app` (or your fork).
+4. **Branch:** `main` (or `master` if that’s your default).
+5. **Main file path** — use **one** of these (depends what the form asks for):
+   - **Relative path (most common):** `badminton.py`
+   - **If the UI says it must be a GitHub URL to a `.py` file**, paste the **blob** URL to your script, for example:
+     - `https://github.com/anuragbhavsar-droid/badminton-tournament-app/blob/main/badminton.py`
+     - If your default branch is `master`, use `/blob/master/badminton.py` instead of `/blob/main/`.
+6. **Secrets (required):** **App → Settings → Secrets** and add at least:
+   ```toml
+   SUPERUSER_PASSWORD = "your-secure-password"
+   SUPABASE_URL = "https://your-project.supabase.co"
+   SUPABASE_SERVICE_KEY = "your-service-role-key"
+   ```
+   (On Cloud, `.env` is not used unless you add a custom mechanism; `load_dotenv()` still runs but won’t find secrets unless you commit `.env`, which you should not do.)
+
+If deployment still fails, confirm **`badminton.py`** exists on GitHub at the branch you selected and the path matches exactly (case-sensitive).
 
 ## Contributing
 
