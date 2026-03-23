@@ -341,10 +341,19 @@ def _render_amdocs_header():
 _inject_custom_css()
 
 
+# Nav page ids (labels shown on sidebar / mobile menu)
+PAGE_FIXTURES_RESULTS = "Fixtures and Results"
+PAGE_LEADERBOARD = "Leaderboard"
+_LEGACY_NAV_MENU = {"Home": PAGE_FIXTURES_RESULTS, "Stats": PAGE_LEADERBOARD}
+
+
 def _nav_sync_session(available_pages):
     """Ensure session nav_menu is a valid page id."""
     if not available_pages:
         return
+    nm = st.session_state.get("nav_menu")
+    if nm in _LEGACY_NAV_MENU:
+        st.session_state.nav_menu = _LEGACY_NAV_MENU[nm]
     if "nav_menu" not in st.session_state or st.session_state.nav_menu not in available_pages:
         st.session_state.nav_menu = available_pages[0]
 
@@ -355,8 +364,8 @@ def render_sidebar_navigation(available_pages):
     Returns current menu id (str).
     """
     if not available_pages:
-        st.session_state.nav_menu = "Home"
-        return "Home"
+        st.session_state.nav_menu = PAGE_FIXTURES_RESULTS
+        return PAGE_FIXTURES_RESULTS
     _nav_sync_session(available_pages)
     with st.sidebar.container(key="nav_pages"):
         st.markdown(
@@ -374,7 +383,7 @@ def render_sidebar_navigation(available_pages):
                     p,
                     key=f"sb_nav_{p}",
                     type="primary" if is_active else "secondary",
-                    use_container_width=True,
+                    width="stretch",
                 )
             except TypeError:
                 clicked = st.button(p, key=f"sb_nav_{p}_l", use_container_width=True)
@@ -386,16 +395,21 @@ def render_sidebar_navigation(available_pages):
 
 # Session key for mobile ☰ popover open state (close after choosing a section).
 MOBILE_NAV_POPOVER_KEY = "tournament_mobile_nav_popover"
+# Must not assign to MOBILE_NAV_POPOVER_KEY after st.popover() runs in the same script — close on the *next* run:
+_CLOSE_MOBILE_NAV_AFTER_SELECT = "_close_mobile_nav_popover_next"
 
 
 def render_mobile_navigation(available_pages):
     """
     Main column: burger ☰ Menu popover (CSS-shown only on small screens).
-    With key + on_change='rerun', session state holds open/closed; set False after a nav click to close.
+    Popover open state uses key + on_change='rerun'. Closing is done by setting the popover key
+    to False *before* st.popover() is called (see _CLOSE_MOBILE_NAV_AFTER_SELECT).
     """
     if not available_pages:
         return
     _nav_sync_session(available_pages)
+    if st.session_state.pop(_CLOSE_MOBILE_NAV_AFTER_SELECT, False):
+        st.session_state[MOBILE_NAV_POPOVER_KEY] = False
     st.markdown('<div class="tournament-mobile-menu">', unsafe_allow_html=True)
     with st.popover(
         "☰ Menu",
@@ -409,9 +423,9 @@ def render_mobile_navigation(available_pages):
         )
         with st.container(key="mobile_nav_menu"):
             for p in available_pages:
-                if st.button(p, key=f"mo_nav_{p}", use_container_width=True):
+                if st.button(p, key=f"mo_nav_{p}", width="stretch"):
                     st.session_state.nav_menu = p
-                    st.session_state[MOBILE_NAV_POPOVER_KEY] = False
+                    st.session_state[_CLOSE_MOBILE_NAV_AFTER_SELECT] = True
                     st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -477,7 +491,7 @@ def get_current_user_role():
 def can_access_page(page_name):
     """Check if current user can access a specific page"""
     # Public pages - accessible to everyone (including guests)
-    public_pages = ['Teams', 'Standings', 'Home', 'Stats']
+    public_pages = ["Teams", "Standings", PAGE_FIXTURES_RESULTS, PAGE_LEADERBOARD]
 
     if page_name in public_pages:
         return True
@@ -527,7 +541,9 @@ def login_page():
                 else:
                     st.error('User not found')
         st.markdown("---")
-        st.caption("You can view **Teams**, **Standings**, **Home** (fixtures), and **Stats** without logging in.")
+        st.caption(
+            f"You can view **Teams**, **Standings**, **{PAGE_FIXTURES_RESULTS}**, and **{PAGE_LEADERBOARD}** without logging in."
+        )
         if st.button('🌐 Continue as Guest', use_container_width=True):
             st.session_state.public_access = True
             st.rerun()
@@ -776,15 +792,15 @@ if not is_authenticated() and not st.session_state.get('public_access', False):
 
 # Build navigation menu based on user permissions
 available_pages = []
-# ICC-style nav labels (see icc-cricket.com tournament hubs: Home, Warm-Ups, Matches, Teams, Standings, Stats, …)
+# ICC-style hubs: Fixtures & results landing, Warm-Ups, Matches, Teams, Standings, Leaderboard, …
 all_pages = [
-    "Home",
+    PAGE_FIXTURES_RESULTS,
     "Warm-Ups",
     "Matches",
     "Teams",
     "Squads",
     "Standings",
-    "Stats",
+    PAGE_LEADERBOARD,
     "Record",
     "Manage Players",
     "User Management",
@@ -4603,8 +4619,8 @@ elif menu == "Matches":
                 st.info("Schedule formatted for copying above ☝️")
 
 # --- TAB 4: STANDINGS ---
-elif menu == "Home":
-    st.header("📋 Home · Fixtures & results")
+elif menu == PAGE_FIXTURES_RESULTS:
+    st.header(f"📋 {PAGE_FIXTURES_RESULTS}")
     st.markdown(
         "**Clash lifecycle:** **Scheduled** (not started) → **In progress** (1–4 games recorded) → **Completed** (all 5 games). "
         "**Fixtures** lists every pairing that is **Scheduled** or **In progress**. "
@@ -4785,9 +4801,9 @@ elif menu == "Standings":
             st.warning("⚠️ No valid tournament data available for standings calculation")
 
 
-# --- STATS (Deciders / Chokers / Female; ICC-style “Stats” hub) ---
-elif menu == "Stats":
-    st.header("📈 Stats · Leaderboard")
+# --- Leaderboard (Deciders / Chokers / Female) ---
+elif menu == PAGE_LEADERBOARD:
+    st.header(f"📈 {PAGE_LEADERBOARD}")
     st.markdown(
         "Updates live with **Standings** — each recorded game counts. "
         "**Deciders** = games 1, 3 & 5; **Chokers** = games 2 & 4. **Female** = all games. "
@@ -4795,7 +4811,7 @@ elif menu == "Stats":
     )
 
     if not st.session_state.groups or not any(st.session_state.groups.values()):
-        st.info("📝 No teams have been created yet. Create teams in **Warm-Ups** to see **Stats**.")
+        st.info(f"📝 No teams have been created yet. Create teams in **Warm-Ups** to see **{PAGE_LEADERBOARD}**.")
     else:
         group_names = st.session_state.get("group_names", {})
         subgroup_names = st.session_state.get("subgroup_names", DEFAULT_SUBGROUP_NAMES)
@@ -5106,4 +5122,7 @@ elif menu == "User Management":
             - Can view team details & standings
             """)
         
-        st.info("🌐 **Guest/Public Access:** Anyone can view **Teams** (skill levels hidden), **Standings**, **Home** (fixtures), and **Stats** without logging in.")
+        st.info(
+            f"🌐 **Guest/Public Access:** Anyone can view **Teams** (skill levels hidden), **Standings**, "
+            f"**{PAGE_FIXTURES_RESULTS}**, and **{PAGE_LEADERBOARD}** without logging in."
+        )
