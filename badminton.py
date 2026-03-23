@@ -384,15 +384,25 @@ def render_sidebar_navigation(available_pages):
     return st.session_state.nav_menu
 
 
+# Session key for mobile ☰ popover open state (close after choosing a section).
+MOBILE_NAV_POPOVER_KEY = "tournament_mobile_nav_popover"
+
+
 def render_mobile_navigation(available_pages):
     """
     Main column: burger ☰ Menu popover (CSS-shown only on small screens).
+    With key + on_change='rerun', session state holds open/closed; set False after a nav click to close.
     """
     if not available_pages:
         return
     _nav_sync_session(available_pages)
     st.markdown('<div class="tournament-mobile-menu">', unsafe_allow_html=True)
-    with st.popover("☰ Menu"):
+    with st.popover(
+        "☰ Menu",
+        key=MOBILE_NAV_POPOVER_KEY,
+        on_change="rerun",
+        width="stretch",
+    ):
         st.markdown(
             '<p class="mobile-nav-caption">Choose a section</p>',
             unsafe_allow_html=True,
@@ -401,6 +411,7 @@ def render_mobile_navigation(available_pages):
             for p in available_pages:
                 if st.button(p, key=f"mo_nav_{p}", use_container_width=True):
                     st.session_state.nav_menu = p
+                    st.session_state[MOBILE_NAV_POPOVER_KEY] = False
                     st.rerun()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1715,19 +1726,31 @@ def log_clash_edit(clash_key, match_number, action, original_data, new_data, rea
 def _pool_names_for_record_clash(group_key, pool_type):
     """
     Names eligible for a Decider (subgroup1) or Choker (subgroup2) match for one team.
-    Uses detailed_groups when set; otherwise skill bands from player_database + last_balance_config defaults.
+
+    Combines (1) players listed in ``detailed_groups`` for that pool with (2) anyone on the
+    team roster whose ``skill_level`` in ``player_database`` falls in the configured band.
+
+    Previously only (1) was used whenever it was non-empty, so roster/skill could drift after
+    Warm-Ups (e.g. new player or stale ``detailed_groups``) and valid Deciders/Chokers would
+    not appear in Record / Plan lineup. Union fixes that. Names are matched with stripped strings.
     """
     detailed = st.session_state.get("detailed_groups") or {}
+    names_detailed = []
     if detailed and group_key in detailed:
         sub = detailed[group_key].get(pool_type, {})
         players = sub.get("players") or []
-        names = [p.get("name", p["name"]) if isinstance(p, dict) else str(p) for p in players if p]
-        names = [n for n in names if n]
-        if names:
-            return names
+        for p in players:
+            if not p:
+                continue
+            if isinstance(p, dict):
+                nm = p.get("name") or ""
+            else:
+                nm = p
+            s = str(nm).strip()
+            if s:
+                names_detailed.append(s)
+
     roster = list(st.session_state.groups.get(group_key, []))
-    if not roster:
-        return []
     cfg = st.session_state.get("last_balance_config") or {}
     if pool_type == "subgroup1":
         lo = int(cfg.get("subgroup1_min", DEFAULT_DECIDERS_MIN))
@@ -1735,20 +1758,32 @@ def _pool_names_for_record_clash(group_key, pool_type):
     else:
         lo = int(cfg.get("subgroup2_min", DEFAULT_CHOKERS_MIN))
         hi = int(cfg.get("subgroup2_max", DEFAULT_CHOKERS_MAX))
-    pd = st.session_state.get("player_database")
-    if pd is None or pd.empty or "name" not in pd.columns or "skill_level" not in pd.columns:
-        return []
+
+    pdb = st.session_state.get("player_database")
+    names_skill = []
+    if roster and pdb is not None and not pdb.empty and "name" in pdb.columns and "skill_level" in pdb.columns:
+        pname = pdb["name"].astype(str).str.strip()
+        for name in roster:
+            ns = str(name).strip()
+            row = pdb[pname == ns]
+            if row.empty:
+                continue
+            try:
+                sk = int(row.iloc[0]["skill_level"])
+            except (TypeError, ValueError):
+                continue
+            if lo <= sk <= hi:
+                names_skill.append(ns)
+
+    # Union: prefer detailed order, then add roster/skill matches not already present
+    seen = set()
     out = []
-    for name in roster:
-        row = pd[pd["name"].astype(str) == str(name)]
-        if row.empty:
+    for n in names_detailed + names_skill:
+        key = str(n).strip()
+        if not key or key in seen:
             continue
-        try:
-            sk = int(row.iloc[0]["skill_level"])
-        except (TypeError, ValueError):
-            continue
-        if lo <= sk <= hi:
-            out.append(name)
+        seen.add(key)
+        out.append(n)
     return out
 
 
@@ -3906,8 +3941,6 @@ elif menu == "Teams":
     if not st.session_state.groups or not any(st.session_state.groups.values()):
         st.info("📝 No teams have been created yet. Go to **Warm-Ups** to import players and create teams first.")
     else:
-        # Guest: hide skill level in team details
-        _guest_hide_skill = not is_authenticated()
         # Check if subgroup data exists
         has_subgroups = hasattr(st.session_state, 'detailed_groups') and st.session_state.detailed_groups
         
@@ -3959,71 +3992,20 @@ elif menu == "Teams":
                 with tab:
                     display_group_name = st.session_state.group_names.get(group_name, group_name)
                     st.markdown(f"### {display_group_name} - Complete Roster")
-                    
-                    # Group statistics
-                    total_players = len(subgroups['subgroup1']['players']) + len(subgroups['subgroup2']['players'])
-                    total_males = subgroups['subgroup1']['male_count'] + subgroups['subgroup2']['male_count']
-                    total_females = subgroups['subgroup1']['female_count'] + subgroups['subgroup2']['female_count']
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Total Players", total_players)
-                    with col2:
-                        st.metric("Males", total_males)
-                    with col3:
-                        st.metric("Females", total_females)
-                    
-                    # Subgroup breakdown with enhanced display
-                    st.markdown("---")
-                    st.markdown(f"### 🎯 Subgroup Organization")
-                    show_skill_team = False if _guest_hide_skill else st.session_state.get("show_skill_in_groups", True)
-                    col1, col2 = st.columns(2)
-                    
-                    # Subgroup 1
-                    with col1:
-                        st.markdown(f"#### 🔽 {subgroup1_name}")
-                        sg1_players = subgroups['subgroup1']['players']
-                        if sg1_players:
-                            sg1_metrics_col1, sg1_metrics_col2 = st.columns(2)
-                            with sg1_metrics_col1:
-                                st.metric("Players", len(sg1_players))
-                                st.metric("Males", subgroups['subgroup1']['male_count'])
-                            with sg1_metrics_col2:
-                                st.metric("Females", subgroups['subgroup1']['female_count'])
-                            
-                            st.markdown("**🏸 Players:**")
-                            for i, player in enumerate(sg1_players, 1):
-                                gender_icon = "👨" if player['gender'] == 'M' else "👩"
-                                if show_skill_team:
-                                    skill_stars = "⭐" * min(player.get('skill_level', 0), 15)
-                                    st.write(f"{i}. {gender_icon} **{player['name']}** (Skill: {player.get('skill_level', '')} {skill_stars})")
-                                else:
-                                    st.write(f"{i}. {gender_icon} **{player['name']}**")
-                        else:
-                            st.info(f"No players in {subgroup1_name}")
-                    
-                    # Subgroup 2
-                    with col2:
-                        st.markdown(f"#### 🔼 {subgroup2_name}")
-                        sg2_players = subgroups['subgroup2']['players']
-                        if sg2_players:
-                            sg2_metrics_col1, sg2_metrics_col2 = st.columns(2)
-                            with sg2_metrics_col1:
-                                st.metric("Players", len(sg2_players))
-                                st.metric("Males", subgroups['subgroup2']['male_count'])
-                            with sg2_metrics_col2:
-                                st.metric("Females", subgroups['subgroup2']['female_count'])
-                            
-                            st.markdown("**🏸 Players:**")
-                            for i, player in enumerate(sg2_players, 1):
-                                gender_icon = "👨" if player['gender'] == 'M' else "👩"
-                                if show_skill_team:
-                                    skill_stars = "⭐" * min(player.get('skill_level', 0), 15)
-                                    st.write(f"{i}. {gender_icon} **{player['name']}** (Skill: {player.get('skill_level', '')} {skill_stars})")
-                                else:
-                                    st.write(f"{i}. {gender_icon} **{player['name']}**")
-                        else:
-                            st.info(f"No players in {subgroup2_name}")
+                    roster_rows = []
+                    for player in subgroups["subgroup1"]["players"]:
+                        roster_rows.append(
+                            {"Player": player.get("name", ""), "Type": subgroup1_name}
+                        )
+                    for player in subgroups["subgroup2"]["players"]:
+                        roster_rows.append(
+                            {"Player": player.get("name", ""), "Type": subgroup2_name}
+                        )
+                    if roster_rows:
+                        roster_df = pd.DataFrame(roster_rows).sort_values("Player").reset_index(drop=True)
+                        st.dataframe(roster_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("No players in this group.")
         
         else:
             st.info("🎯 **Standard Groups** - Teams created without skill-level subgroups")
@@ -4069,39 +4051,54 @@ elif menu == "Teams":
             
             group_tabs = st.tabs([st.session_state.group_names.get(group_name, group_name) for group_name in st.session_state.groups.keys()])
             
+            _sg1_label = st.session_state.subgroup_names.get("subgroup1", DEFAULT_SUBGROUP_NAMES["subgroup1"])
+            _sg2_label = st.session_state.subgroup_names.get("subgroup2", DEFAULT_SUBGROUP_NAMES["subgroup2"])
+            _bal_cfg = st.session_state.get("last_balance_config") or {}
+            _d_lo = int(_bal_cfg.get("subgroup1_min", DEFAULT_DECIDERS_MIN))
+            _d_hi = int(_bal_cfg.get("subgroup1_max", DEFAULT_DECIDERS_MAX))
+            _c_lo = int(_bal_cfg.get("subgroup2_min", DEFAULT_CHOKERS_MIN))
+            _c_hi = int(_bal_cfg.get("subgroup2_max", DEFAULT_CHOKERS_MAX))
+
+            def _standard_roster_type(skill_val):
+                try:
+                    if skill_val is None or (isinstance(skill_val, float) and pd.isna(skill_val)):
+                        s = None
+                    else:
+                        s = int(skill_val)
+                except (TypeError, ValueError):
+                    s = None
+                if s is not None and _d_lo <= s <= _d_hi:
+                    return _sg1_label
+                if s is not None and _c_lo <= s <= _c_hi:
+                    return _sg2_label
+                return "—"
+
             for tab, (group_name, players) in zip(group_tabs, st.session_state.groups.items()):
                 with tab:
                     display_group_name = st.session_state.group_names.get(group_name, group_name)
                     st.markdown(f"### {display_group_name} - Complete Roster")
-                    
+
                     if players:
-                        # Get player details
                         group_players_df = st.session_state.player_database[
-                            st.session_state.player_database['name'].isin(players)
+                            st.session_state.player_database["name"].isin(players)
                         ]
-                        
+
                         if not group_players_df.empty:
-                            # Group statistics
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Total Players", len(group_players_df))
-                            with col2:
-                                males = len(group_players_df[group_players_df['gender'] == 'M'])
-                                st.metric("Males", males)
-                            with col3:
-                                females = len(group_players_df[group_players_df['gender'] == 'F'])
-                                st.metric("Females", females)
-                            
-                            # Player list
-                            st.markdown("#### 📋 Players")
-                            show_skill_team = False if _guest_hide_skill else st.session_state.get("show_skill_in_groups", True)
-                            for i, (_, player) in enumerate(group_players_df.iterrows(), 1):
-                                gender_icon = "👨" if player['gender'] == 'M' else "👩"
-                                if show_skill_team and 'skill_level' in group_players_df.columns:
-                                    skill_stars = "⭐" * min(int(player.get('skill_level', 0)), 15)
-                                    st.write(f"{i}. {gender_icon} **{player['name']}** (Skill: {player['skill_level']} {skill_stars}) - {player['email']}")
-                                else:
-                                    st.write(f"{i}. {gender_icon} **{player['name']}** - {player['email']}")
+                            if "skill_level" in group_players_df.columns:
+                                types = group_players_df["skill_level"].map(_standard_roster_type)
+                            else:
+                                types = pd.Series(["—"] * len(group_players_df), index=group_players_df.index)
+                            roster_df = (
+                                pd.DataFrame(
+                                    {
+                                        "Player": group_players_df["name"].astype(str),
+                                        "Type": types,
+                                    }
+                                )
+                                .sort_values("Player")
+                                .reset_index(drop=True)
+                            )
+                            st.dataframe(roster_df, use_container_width=True, hide_index=True)
                         else:
                             st.warning("No player details found in database")
                     else:
