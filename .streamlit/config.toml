@@ -1,8 +1,9 @@
 [theme]
 base = "light"
-primaryColor = "#ED1C24"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f1f5f9"
+# ICC-inspired primary (tournament hub blue); custom CSS refines layout further
+primaryColor = "#0a6ebd"
+backgroundColor = "#f8fafc"
+secondaryBackgroundColor = "#e8eef4"
 textColor = "#0f172a"
 font = "sans serif"
 

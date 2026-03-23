@@ -3,7 +3,7 @@ Leaderboard (Player Stats) module for Badminton Tournament Pro.
 Provides standings by subgroup (Deciders / Chokers) and female-only standings.
 Aligned with tournament standings: fixed 5 game slots, resolved clash keys, only recorded games.
 Deciders table uses games 1,3,5 (indices 0,2,4); Chokers uses games 2,4 (indices 1,3).
-Points: +2 per match win for the player who played; matches played; last 3 results (form).
+Points: +2 per match win for the player who played; matches played; last 5 results (form).
 """
 from typing import Any, Dict, List, Optional, Set
 
@@ -23,6 +23,9 @@ DECIDER_GAME_INDICES = frozenset({0, 2, 4})
 CHOKER_GAME_INDICES = frozenset({1, 3})
 
 POINTS_PER_WIN = 2
+
+# Recent form column: last N games (W/L), most recent rightmost in display order
+RECENT_FORM_GAMES = 5
 
 
 def _get_player_skill(
@@ -109,51 +112,51 @@ def compute_player_stats_from_matches(
             if names_g1 and names_g2:
                 for name in names_g1:
                     if name not in stats:
-                        stats[name] = {"points": 0, "matches_played": 0, "last_3": []}
+                        stats[name] = {"points": 0, "matches_played": 0, "recent_form": []}
                     stats[name]["matches_played"] += 1
                     won = winner == "g1"
                     if won:
                         stats[name]["points"] += POINTS_PER_WIN
-                    stats[name]["last_3"].append("W" if won else "L")
+                    stats[name]["recent_form"].append("W" if won else "L")
                 for name in names_g2:
                     if name not in stats:
-                        stats[name] = {"points": 0, "matches_played": 0, "last_3": []}
+                        stats[name] = {"points": 0, "matches_played": 0, "recent_form": []}
                     stats[name]["matches_played"] += 1
                     won = winner == "g2"
                     if won:
                         stats[name]["points"] += POINTS_PER_WIN
-                    stats[name]["last_3"].append("W" if won else "L")
+                    stats[name]["recent_form"].append("W" if won else "L")
             else:
                 roster_g1 = list(groups.get(ga, []))
                 roster_g2 = list(groups.get(gb, []))
                 for name in roster_g1:
                     if name not in stats:
-                        stats[name] = {"points": 0, "matches_played": 0, "last_3": []}
+                        stats[name] = {"points": 0, "matches_played": 0, "recent_form": []}
                     stats[name]["matches_played"] += 1
                     if winner == "g1":
                         stats[name]["points"] += POINTS_PER_WIN
-                        stats[name]["last_3"].append("W")
+                        stats[name]["recent_form"].append("W")
                     else:
-                        stats[name]["last_3"].append("L")
+                        stats[name]["recent_form"].append("L")
                 for name in roster_g2:
                     if name not in stats:
-                        stats[name] = {"points": 0, "matches_played": 0, "last_3": []}
+                        stats[name] = {"points": 0, "matches_played": 0, "recent_form": []}
                     stats[name]["matches_played"] += 1
                     if winner == "g2":
                         stats[name]["points"] += POINTS_PER_WIN
-                        stats[name]["last_3"].append("W")
+                        stats[name]["recent_form"].append("W")
                     else:
-                        stats[name]["last_3"].append("L")
+                        stats[name]["recent_form"].append("L")
 
     for name in stats:
-        stats[name]["last_3"] = stats[name]["last_3"][-3:]
+        stats[name]["recent_form"] = stats[name]["recent_form"][-RECENT_FORM_GAMES:]
     return stats
 
 
-def _form_display(last_3: List[str]) -> str:
-    """Convert last 3 W/L to green/red dots."""
+def _form_display(recent: List[str]) -> str:
+    """Convert last N W/L to green/red dots (oldest → newest left to right)."""
     s = ""
-    for r in last_3:
+    for r in recent:
         s += "🟢" if r == "W" else "🔴"
     return s
 
@@ -164,13 +167,13 @@ def _player_row(
     stats: Dict[str, Dict[str, Any]],
 ) -> Dict[str, Any]:
     name = p.get("name", "")
-    s = stats.get(name, {"points": 0, "matches_played": 0, "last_3": []})
+    s = stats.get(name, {"points": 0, "matches_played": 0, "recent_form": []})
     return {
         "Team": group_display,
         "Name": name,
         "Points": s["points"],
         "Matches Played": s["matches_played"],
-        "Recent form": _form_display(s["last_3"]),
+        "Recent form": _form_display(s["recent_form"]),
     }
 
 

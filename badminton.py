@@ -37,13 +37,13 @@ DEFAULT_GROUP_NAMES = {
 
 # Page Configuration (mobile-first: collapsed sidebar on load; layout wide for desktop)
 st.set_page_config(
-    page_title="Amdocs Badminton Premier League",
+    page_title="Tournament Hub | Badminton Premier League",
     page_icon="🏸",
     layout="wide",
     initial_sidebar_state="auto",
 )
 
-# Amdocs + Premier League Canada theme (brand red ~#ED1C24, royal blue, gold, lime accents)
+# ICC tournament–inspired UI (dark masthead, navy sidebar, gold accents) — layout echoing icc-cricket.com event hubs
 def _inject_custom_css():
     st.markdown(
         """
@@ -52,19 +52,28 @@ def _inject_custom_css():
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
     <style>
     :root {
+        --icc-navy: #001a2e;
+        --icc-navy-mid: #003049;
+        --icc-blue: #0a6ebd;
+        --icc-blue-soft: #e8f4fc;
+        --icc-gold: #c9a227;
+        --icc-gold-bright: #e8c547;
+        --icc-white: #f8fafc;
+        --icc-text: #0f172a;
+        --icc-muted: #64748b;
         --amdocs-red: #ED1C24;
         --amdocs-red-dark: #c4161d;
-        --royal-blue: #1e3a8a;
-        --royal-blue-light: #3b82f6;
-        --gold: #ca8a04;
-        --gold-soft: #fef9c3;
+        --royal-blue: #003049;
+        --royal-blue-light: #0a6ebd;
+        --gold: #c9a227;
+        --gold-soft: #fdf8e8;
         --lime: #65a30d;
-        --navy-deep: #0c1222;
-        --navy-mid: #1e1b4b;
+        --navy-deep: #001a2e;
+        --navy-mid: #003049;
     }
-    /* ========== MOBILE FIRST ========== */
+    /* ========== ICC-style tournament shell (mobile-first) ========== */
     .stApp {
-        background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 50%, #eef2f9 100%) !important;
+        background: linear-gradient(180deg, #e8eef4 0%, #f4f7fb 40%, #eef2f9 100%) !important;
         font-family: 'Montserrat', 'Segoe UI', system-ui, sans-serif !important;
     }
     .main .block-container {
@@ -117,8 +126,9 @@ def _inject_custom_css():
         padding: 0.5rem 0.6rem;
         margin: 0 auto;
         max-width: 100%;
-        background: linear-gradient(90deg, #1e3a8a, #ED1C24);
+        background: linear-gradient(90deg, var(--icc-navy), var(--icc-blue));
         border-radius: 8px;
+        border: 1px solid rgba(201, 162, 39, 0.5);
         color: white;
         font-family: 'Montserrat', sans-serif;
         font-size: clamp(0.7rem, 3.2vw, 1rem);
@@ -128,9 +138,9 @@ def _inject_custom_css():
     .stButton > button { min-height: 44px !important; padding: 0.5rem 1rem !important; font-family: 'Montserrat', sans-serif !important; }
     .stTextInput input, .stNumberInput input { min-height: 44px !important; font-size: 16px !important; }
     [data-testid="stRadio"] label { min-height: 44px !important; padding: 0.5rem 0 !important; display: flex !important; align-items: center !important; }
-    h1 { font-size: 1.5rem !important; margin-bottom: 0.25rem !important; line-height: 1.3 !important; font-family: 'Montserrat', sans-serif !important; font-weight: 800 !important; color: var(--royal-blue) !important; }
-    h2 { font-size: 1.2rem !important; margin-top: 1rem !important; padding-bottom: 0.35rem !important; font-family: 'Montserrat', sans-serif !important; font-weight: 700 !important; color: var(--navy-deep) !important; border-bottom: 2px solid var(--gold) !important; }
-    h3 { font-size: 1.05rem !important; font-family: 'Montserrat', sans-serif !important; font-weight: 600 !important; color: var(--royal-blue) !important; }
+    h1 { font-size: 1.5rem !important; margin-bottom: 0.25rem !important; line-height: 1.3 !important; font-family: 'Montserrat', sans-serif !important; font-weight: 800 !important; color: var(--icc-navy) !important; }
+    h2 { font-size: 1.2rem !important; margin-top: 1rem !important; padding-bottom: 0.35rem !important; font-family: 'Montserrat', sans-serif !important; font-weight: 700 !important; color: var(--icc-navy) !important; border-bottom: 2px solid var(--icc-gold) !important; }
+    h3 { font-size: 1.05rem !important; font-family: 'Montserrat', sans-serif !important; font-weight: 600 !important; color: var(--icc-navy-mid) !important; }
     @media (max-width: 768px) {
         .main [data-testid="column"] { width: 100% !important; min-width: 100% !important; }
         .stTabs [data-baseweb="tab-list"] { flex-wrap: wrap !important; gap: 4px !important; }
@@ -138,35 +148,93 @@ def _inject_custom_css():
         [data-testid="stMetric"] { padding: 0.75rem 1rem !important; }
         [data-testid="stDataFrame"] { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
     }
-    .main p, .main span, .main label { color: #1e293b !important; font-family: 'Montserrat', sans-serif !important; }
-    /* Sidebar — navy + Amdocs red accent */
+    .main p, .main label { color: #0f172a !important; font-family: 'Montserrat', sans-serif !important; }
+    .main .stMarkdown p, .main .stMarkdown li { color: #0f172a !important; }
+    /* Sidebar — ICC-style dark rail + gold accent */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, var(--navy-mid) 0%, var(--navy-deep) 100%) !important;
-        border-right: 4px solid var(--amdocs-red) !important;
+        background: linear-gradient(180deg, var(--icc-navy-mid) 0%, var(--icc-navy) 100%) !important;
+        border-right: 3px solid var(--icc-gold) !important;
     }
     [data-testid="stSidebar"] .stMarkdown { color: #f8fafc !important; }
     [data-testid="stSidebar"] .stMarkdown strong { color: #fef08a !important; }
-    [data-testid="stSidebar"] label { color: #e2e8f0 !important; }
-    [data-testid="stSidebar"] .stRadio label { color: #f1f5f9 !important; font-weight: 500 !important; min-height: 44px !important; padding: 0.5rem 0 !important; }
+    [data-testid="stSidebar"] label { color: #f8fafc !important; }
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] span,
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] label {
+        color: #f8fafc !important;
+        font-weight: 600 !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stSidebar"] .stRadio label { color: #f8fafc !important; font-weight: 600 !important; min-height: 44px !important; padding: 0.5rem 0 !important; }
     [data-testid="stSidebar"] p { color: #e2e8f0 !important; }
-    [data-testid="stSidebar"] hr { border-color: rgba(237, 28, 36, 0.35) !important; }
-    [data-testid="stSidebar"] span { color: #e2e8f0 !important; }
+    [data-testid="stSidebar"] hr { border-color: rgba(201, 162, 39, 0.35) !important; }
+    [data-testid="stSidebar"] .stMarkdown span { color: #e2e8f0 !important; }
     [data-testid="stSidebar"] div[data-testid="stRadio"] label { color: #f8fafc !important; }
     [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 { color: #ffffff !important; }
     [data-testid="stSidebar"] .stButton > button { min-height: 44px !important; }
-    /* Primary = Amdocs red */
+    [data-testid="stSidebar"] .stButton > button[kind="secondary"] {
+        color: #0f172a !important;
+        background-color: #f1f5f9 !important;
+        border: 1px solid #cbd5e1 !important;
+        font-weight: 600 !important;
+    }
+    /* Navigate section: gold titles + gold text on nav pills (keys sb_nav_*) */
+    [data-testid="stSidebar"] p.sidebar-nav-title,
+    [data-testid="stSidebar"] p.sidebar-nav-title strong {
+        color: #facc15 !important;
+        font-weight: 700 !important;
+        margin: 0 0 0.25rem 0 !important;
+        font-size: 1rem !important;
+    }
+    [data-testid="stSidebar"] p.sidebar-nav-caption {
+        color: #fde047 !important;
+        font-size: 0.8rem !important;
+        margin: 0 0 0.5rem 0 !important;
+        opacity: 0.95 !important;
+    }
+    .tournament-mobile-menu p.mobile-nav-caption {
+        color: #fde047 !important;
+        font-size: 0.8rem !important;
+        margin: 0 0 0.5rem 0 !important;
+    }
+    [data-testid="stSidebar"] .stButton > button[kind="primary"] {
+        color: #ffffff !important;
+        background: linear-gradient(180deg, var(--icc-blue) 0%, #085a9e 100%) !important;
+        border: none !important;
+    }
+    /* Primary = ICC blue */
     .stButton > button[kind="primary"] {
-        background: linear-gradient(180deg, var(--amdocs-red) 0%, var(--amdocs-red-dark) 100%) !important;
-        color: white !important; border: none !important; box-shadow: 0 2px 8px rgba(237, 28, 36, 0.35) !important;
+        background: linear-gradient(180deg, var(--icc-blue) 0%, #085a9e 100%) !important;
+        color: white !important; border: none !important; box-shadow: 0 2px 8px rgba(10, 110, 189, 0.35) !important;
     }
     .stButton > button[kind="primary"]:hover {
-        background: var(--amdocs-red-dark) !important; color: white !important;
+        background: #085a9e !important; color: white !important;
+    }
+    /* Navigate section buttons: st.sidebar.container(key="nav_pages") → .st-key-nav_pages */
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="secondary"],
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="secondary"] p,
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="secondary"] span,
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="primary"],
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="primary"] p,
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="primary"] span {
+        color: var(--icc-gold-bright) !important;
+    }
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="primary"]:hover,
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="primary"]:hover p,
+    [data-testid="stSidebar"] .st-key-nav_pages .stButton > button[kind="primary"]:hover span {
+        color: var(--icc-gold-bright) !important;
+    }
+    /* Mobile menu section names: st.container(key="mobile_nav_menu") inside popover */
+    .st-key-mobile_nav_menu .stButton > button,
+    .st-key-mobile_nav_menu .stButton > button p,
+    .st-key-mobile_nav_menu .stButton > button span {
+        color: var(--icc-gold-bright) !important;
     }
     .stButton > button {
         border-radius: 10px !important; font-weight: 600 !important;
-        border: 1px solid #cbd5e1 !important; color: var(--navy-deep) !important; background-color: #fff !important;
+        border: 1px solid #cbd5e1 !important; color: var(--icc-navy) !important; background-color: #fff !important;
     }
-    .stButton > button:hover { background-color: var(--gold-soft) !important; border-color: var(--gold) !important; }
+    .stButton > button:hover { background-color: var(--gold-soft) !important; border-color: var(--icc-gold) !important; }
     /* Metrics — card with blue accent */
     [data-testid="stMetric"] {
         background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%) !important;
@@ -174,23 +242,54 @@ def _inject_custom_css():
         box-shadow: 0 2px 12px rgba(30, 58, 138, 0.08) !important;
         border: 1px solid rgba(30, 58, 138, 0.15) !important;
     }
-    [data-testid="stMetricValue"] { font-weight: 800 !important; color: var(--royal-blue-light) !important; }
-    [data-testid="stMetricLabel"] { color: #64748b !important; font-weight: 600 !important; }
+    [data-testid="stMetricValue"] { font-weight: 800 !important; color: var(--icc-blue) !important; }
+    [data-testid="stMetricLabel"] { color: #334155 !important; font-weight: 600 !important; }
     .stTextInput > div > div input, .stNumberInput input { border-radius: 8px !important; border-color: #cbd5e1 !important; }
-    [data-testid="stSelectbox"] label, .main [data-testid="stRadio"] label { color: #1e293b !important; }
+    [data-testid="stSelectbox"] label, .main [data-testid="stRadio"] label { color: #0f172a !important; }
+    /* --- Form & widget labels (high contrast; Streamlit/BaseWeb) --- */
+    section.main [data-testid="stWidgetLabel"] p,
+    section.main [data-testid="stWidgetLabel"] label,
+    section.main [data-testid="stWidgetLabel"] span {
+        color: #0f172a !important;
+        font-weight: 600 !important;
+        opacity: 1 !important;
+    }
+    section.main [data-testid="stCaption"] {
+        color: #475569 !important;
+        opacity: 1 !important;
+    }
+    section.main [data-testid="stCheckbox"] label span,
+    section.main [data-testid="stCheckbox"] label p {
+        color: #0f172a !important;
+        font-weight: 500 !important;
+    }
+    section.main [data-baseweb="select"] ~ div label,
+    section.main [data-baseweb="input"] ~ div label {
+        color: #0f172a !important;
+    }
+    /* Popover / expander text in main */
+    section.main [data-testid="stPopover"] button { color: #0f172a !important; }
+    section.main .streamlit-expanderHeader {
+        color: #0f172a !important;
+    }
     .streamlit-expanderHeader {
-        border-radius: 8px !important; background: linear-gradient(90deg, #f1f5f9 0%, #fff 100%) !important;
-        border-left: 4px solid var(--amdocs-red) !important; padding: 0.75rem 1rem !important; min-height: 44px !important;
+        border-radius: 8px !important; background: linear-gradient(90deg, var(--icc-blue-soft) 0%, #fff 100%) !important;
+        border-left: 4px solid var(--icc-gold) !important; padding: 0.75rem 1rem !important; min-height: 44px !important;
     }
     div[data-baseweb="notification"][kind="info"] { background-color: #eff6ff !important; border-left: 4px solid var(--royal-blue-light) !important; }
     div[data-baseweb="notification"][kind="success"] { background-color: #ecfccb !important; border-left: 4px solid var(--lime) !important; }
     div[data-baseweb="notification"][kind="warning"] { background-color: var(--gold-soft) !important; border-left: 4px solid var(--gold) !important; }
     .stDataFrame { border-radius: 10px !important; overflow: auto !important; box-shadow: 0 2px 8px rgba(30, 58, 138, 0.06) !important; border: 1px solid #e2e8f0 !important; }
-    .stTabs [data-baseweb="tab-list"] { background-color: #e0e7ff !important; border-radius: 10px !important; padding: 4px !important; }
-    .stTabs [data-baseweb="tab"] { border-radius: 8px !important; font-weight: 600 !important; }
+    .stTabs [data-baseweb="tab-list"] { background-color: rgba(0, 48, 73, 0.08) !important; border-radius: 10px !important; padding: 4px !important; border: 1px solid rgba(201, 162, 39, 0.25) !important; }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        color: #0f172a !important;
+        opacity: 1 !important;
+    }
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(180deg, var(--amdocs-red) 0%, var(--amdocs-red-dark) 100%) !important;
-        color: white !important;
+        background: linear-gradient(180deg, var(--icc-navy-mid) 0%, var(--icc-navy) 100%) !important;
+        color: #ffffff !important;
     }
     @media (min-width: 640px) {
         .main .block-container { padding: 1.25rem 1rem 2.5rem !important; }
@@ -205,6 +304,14 @@ def _inject_custom_css():
     @media (min-width: 1024px) {
         .main .block-container { max-width: 1400px !important; margin-left: auto !important; margin-right: auto !important; padding-top: 2rem !important; padding-bottom: 3rem !important; }
     }
+    /* Mobile burger nav: popover row at top of main (hidden on desktop) */
+    .tournament-mobile-menu { width: 100%; margin: 0 0 0.75rem 0; }
+    @media (min-width: 769px) {
+        .tournament-mobile-menu { display: none !important; height: 0 !important; margin: 0 !important; overflow: hidden !important; }
+    }
+    @media (max-width: 768px) {
+        .tournament-mobile-menu button { min-height: 48px !important; font-weight: 700 !important; }
+    }
     </style>
     """,
         unsafe_allow_html=True,
@@ -212,26 +319,91 @@ def _inject_custom_css():
 
 
 def _render_amdocs_header():
-    """Show Premier League banner from assets/ if present (mobile-first sizing via .amdocs-hero-wrap)."""
+    """Premier League banner from assets/ if present (mobile-first sizing via .amdocs-hero-wrap)."""
     banner = Path(__file__).resolve().parent / "assets" / "amdocs_banner.png"
     if banner.is_file():
         try:
             b64 = base64.standard_b64encode(banner.read_bytes()).decode("ascii")
             st.markdown(
-                f'<div class="amdocs-hero-wrap"><img src="data:image/png;base64,{b64}" alt="Amdocs Badminton Premier League" loading="lazy" /></div>',
+                f'<div class="amdocs-hero-wrap"><img src="data:image/png;base64,{b64}" alt="Badminton Premier League" loading="lazy" /></div>',
                 unsafe_allow_html=True,
             )
         except OSError:
             st.image(str(banner), width=280)
     else:
         st.markdown(
-            '<div class="amdocs-hero-fallback">Amdocs Badminton Premier League 2026 · Canada</div>',
+            '<div class="amdocs-hero-fallback">Badminton Premier League 2026</div>',
             unsafe_allow_html=True,
         )
     st.caption("Shuttles fly, spirits rise — balanced teams, fixtures, standings & leaderboard.")
 
 
 _inject_custom_css()
+
+
+def _nav_sync_session(available_pages):
+    """Ensure session nav_menu is a valid page id."""
+    if not available_pages:
+        return
+    if "nav_menu" not in st.session_state or st.session_state.nav_menu not in available_pages:
+        st.session_state.nav_menu = available_pages[0]
+
+
+def render_sidebar_navigation(available_pages):
+    """
+    Sidebar: one button per section; primary = current page (replaces radio).
+    Returns current menu id (str).
+    """
+    if not available_pages:
+        st.session_state.nav_menu = "Home"
+        return "Home"
+    _nav_sync_session(available_pages)
+    with st.sidebar.container(key="nav_pages"):
+        st.markdown(
+            '<div class="sidebar-nav-head">'
+            '<p class="sidebar-nav-title">📑 <strong>Navigate</strong></p>'
+            '<p class="sidebar-nav-caption">Tap a section to open.</p>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        for p in available_pages:
+            is_active = st.session_state.nav_menu == p
+            clicked = False
+            try:
+                clicked = st.button(
+                    p,
+                    key=f"sb_nav_{p}",
+                    type="primary" if is_active else "secondary",
+                    use_container_width=True,
+                )
+            except TypeError:
+                clicked = st.button(p, key=f"sb_nav_{p}_l", use_container_width=True)
+            if clicked:
+                st.session_state.nav_menu = p
+                st.rerun()
+    return st.session_state.nav_menu
+
+
+def render_mobile_navigation(available_pages):
+    """
+    Main column: burger ☰ Menu popover (CSS-shown only on small screens).
+    """
+    if not available_pages:
+        return
+    _nav_sync_session(available_pages)
+    st.markdown('<div class="tournament-mobile-menu">', unsafe_allow_html=True)
+    with st.popover("☰ Menu"):
+        st.markdown(
+            '<p class="mobile-nav-caption">Choose a section</p>',
+            unsafe_allow_html=True,
+        )
+        with st.container(key="mobile_nav_menu"):
+            for p in available_pages:
+                if st.button(p, key=f"mo_nav_{p}", use_container_width=True):
+                    st.session_state.nav_menu = p
+                    st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # User Management System
 def hash_password(password):
@@ -294,23 +466,23 @@ def get_current_user_role():
 def can_access_page(page_name):
     """Check if current user can access a specific page"""
     # Public pages - accessible to everyone (including guests)
-    public_pages = ['Team Details', 'Standings & Qualifiers', 'Fixtures & Results', 'Leaderboard']
-    
+    public_pages = ['Teams', 'Standings', 'Home', 'Stats']
+
     if page_name in public_pages:
         return True
-    
+
     # Protected pages require authentication
     if not is_authenticated():
         return False
-    
+
     user_role = get_current_user_role()
-    
+
     # Superuser can access everything
     if user_role == 'superuser':
         return True
-    
+
     # Admin can access clash recording
-    if user_role == 'admin' and page_name == 'Record a Clash':
+    if user_role == 'admin' and page_name == 'Record':
         return True
     
     # Other protected pages require superuser
@@ -344,7 +516,7 @@ def login_page():
                 else:
                     st.error('User not found')
         st.markdown("---")
-        st.caption("You can view Team Details (no skill levels), Standings, Fixtures & Results, and Leaderboard without logging in.")
+        st.caption("You can view **Teams**, **Standings**, **Home** (fixtures), and **Stats** without logging in.")
         if st.button('🌐 Continue as Guest', use_container_width=True):
             st.session_state.public_access = True
             st.rerun()
@@ -593,15 +765,26 @@ if not is_authenticated() and not st.session_state.get('public_access', False):
 
 # Build navigation menu based on user permissions
 available_pages = []
-all_pages = ["Player Import & Auto-Balance", "Setup Groups & Players", "Team Details", 
-            "Match Schedule", "Fixtures & Results", "Standings & Qualifiers", "Leaderboard", "Record a Clash", "Manage Players", "User Management"]
+# ICC-style nav labels (see icc-cricket.com tournament hubs: Home, Warm-Ups, Matches, Teams, Standings, Stats, …)
+all_pages = [
+    "Home",
+    "Warm-Ups",
+    "Matches",
+    "Teams",
+    "Squads",
+    "Standings",
+    "Stats",
+    "Record",
+    "Manage Players",
+    "User Management",
+]
 
 for page in all_pages:
     if can_access_page(page):
         available_pages.append(page)
 
 # Sidebar: user and nav
-st.sidebar.markdown("### 🏸 **Tournament**")
+st.sidebar.markdown("### 🏸 Tournament **Hub**")
 st.sidebar.markdown("---")
 if is_authenticated():
     current_user = get_current_user()
@@ -615,32 +798,33 @@ else:
         st.session_state.public_access = False
         st.rerun()
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("**💾 Data**")
-col1, col2 = st.sidebar.columns(2)
-with col1:
-    if st.button("💾 Save", help="Save all tournament data", use_container_width=True):
-        save_tournament_data()
-        st.sidebar.success("Saved!")
-with col2:
-    if st.button("📂 Load", help="Load saved data", use_container_width=True):
-        load_tournament_data()
-        st.sidebar.success("Loaded!")
-        st.rerun()
+if is_authenticated():
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**💾 Data**")
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.button("💾 Save", help="Save all tournament data", use_container_width=True):
+            save_tournament_data()
+            st.sidebar.success("Saved!")
+    with col2:
+        if st.button("📂 Load", help="Load saved data", use_container_width=True):
+            load_tournament_data()
+            st.sidebar.success("Loaded!")
+            st.rerun()
 
-if st.sidebar.button("📤 Export CSV", help="Download players as CSV", use_container_width=True):
-    csv_data = st.session_state.player_database.to_csv(index=False)
-    st.sidebar.download_button(
-        label="⬇️ Download",
-        data=csv_data,
-        file_name=f"tournament_players_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
+    if st.sidebar.button("📤 Export CSV", help="Download players as CSV", use_container_width=True):
+        csv_data = st.session_state.player_database.to_csv(index=False)
+        st.sidebar.download_button(
+            label="⬇️ Download",
+            data=csv_data,
+            file_name=f"tournament_players_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("**📑 Navigate**")
-menu = st.sidebar.radio("Choose a page", available_pages, label_visibility="collapsed")
+menu = render_sidebar_navigation(available_pages)
+render_mobile_navigation(available_pages)
 
 # Auto-balancing algorithm
 def auto_balance_groups(players_df, min_females_per_group=None, max_females_per_group=None):
@@ -2582,8 +2766,8 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
         )
 
 # --- MAIN MENU STRUCTURE ---
-if menu == "Player Import & Auto-Balance":
-    st.header("📊 Player Import & Team Auto-Balancing")
+if menu == "Warm-Ups":
+    st.header("📊 Warm-Ups · Player import & auto-balance")
     st.markdown("Import players with detailed information and automatically create balanced groups.")
     
     # Display option: show skill level in this section's balance view and in Team Details
@@ -3090,7 +3274,7 @@ if menu == "Player Import & Auto-Balance":
             # Create balanced groups button (disabled when teams are locked)
             create_disabled = st.session_state.get("teams_locked", False)
             if create_disabled:
-                st.warning("🔒 Teams are locked. Unlock on the **Team Details** page to create or reshuffle groups.")
+                st.warning("🔒 Teams are locked. Unlock on the **Teams** page to create or reshuffle groups.")
             if st.button("🎯 Create Balanced Groups", type="primary", help="This will redistribute all players into balanced groups", disabled=create_disabled):
                 with st.spinner("Creating balanced groups... This may take a moment."):
                     # Shuffle so each run produces different team assignments (balance algo is deterministic)
@@ -3546,8 +3730,8 @@ if menu == "Player Import & Auto-Balance":
         st.info("No players in database. Import some players to get started!")
 
 # --- TAB 2: SETUP GROUPS & PLAYERS ---
-elif menu == "Setup Groups & Players":
-    st.header("🎯 Tournament Setup")
+elif menu == "Squads":
+    st.header("🎯 Squads · Groups & skill subgroups")
     st.markdown("Configure your tournament groups and add all participants.")
     
     # Group Names Setup
@@ -3705,8 +3889,8 @@ elif menu == "Setup Groups & Players":
         st.error(f"❌ Too many players! Remove {total_players-60} players.")
 
 # --- TAB 3: TEAM DETAILS ---
-elif menu == "Team Details":
-    st.header("👥 Team Details & Subgroup Breakdown")
+elif menu == "Teams":
+    st.header("👥 Teams · Details & subgroup breakdown")
     st.markdown("Detailed view of all teams with player distribution")
     
     # Debug info at top (can be hidden with expander)
@@ -3720,7 +3904,7 @@ elif menu == "Team Details":
                 st.write("**Detailed groups keys:**", list(st.session_state.detailed_groups.keys()))
     
     if not st.session_state.groups or not any(st.session_state.groups.values()):
-        st.info("📝 No teams have been created yet. Please go to 'Player Import & Auto-Balance' to create teams first.")
+        st.info("📝 No teams have been created yet. Go to **Warm-Ups** to import players and create teams first.")
     else:
         # Guest: hide skill level in team details
         _guest_hide_skill = not is_authenticated()
@@ -3848,7 +4032,7 @@ elif menu == "Team Details":
             with st.expander("💡 Want to see teams organized by skill subgroups?", expanded=False):
                 st.markdown("""
                 To see players organized by skill subgroups:
-                1. Go to **'Player Import & Auto-Balance'** tab
+                1. Go to **Warm-Ups**
                 2. Select **'Skill-Level Subgroups'** balance strategy
                 3. Configure your skill ranges and subgroup names
                 4. Create balanced groups
@@ -3935,7 +4119,7 @@ elif menu == "Team Details":
                 if st.button("🔓 Unlock teams", key="unlock_teams_btn"):
                     st.session_state.teams_locked = False
                     st.rerun()
-                st.success("Teams are **locked**. Create/Reshuffle disabled on Player Import.")
+                st.success("Teams are **locked**. Create/Reshuffle disabled on **Warm-Ups**.")
             else:
                 if st.button("🔒 Lock teams", key="lock_teams_btn"):
                     st.session_state.teams_locked = True
@@ -4060,8 +4244,8 @@ elif menu == "Team Details":
                     )
 
 # --- TAB 4: MATCH SCHEDULE ---
-elif menu == "Match Schedule":
-    st.header("📅 Match Schedule Generator")
+elif menu == "Matches":
+    st.header("📅 Matches · Schedule generator")
     st.markdown("Create optimized tournament schedule based on available courts and time slots.")
     
     # Initialize schedule state
@@ -4079,7 +4263,7 @@ elif menu == "Match Schedule":
     
     # Check if groups are set up
     if not st.session_state.groups or not any(st.session_state.groups.values()):
-        st.warning("⚠️ Please set up groups first in the 'Setup Groups & Players' tab before creating schedules.")
+        st.warning("⚠️ Set up groups first under **Squads** before creating schedules.")
         st.stop()
     
     # Schedule Configuration
@@ -4422,8 +4606,8 @@ elif menu == "Match Schedule":
                 st.info("Schedule formatted for copying above ☝️")
 
 # --- TAB 4: STANDINGS ---
-elif menu == "Fixtures & Results":
-    st.header("📋 Fixtures & Results")
+elif menu == "Home":
+    st.header("📋 Home · Fixtures & results")
     st.markdown(
         "**Clash lifecycle:** **Scheduled** (not started) → **In progress** (1–4 games recorded) → **Completed** (all 5 games). "
         "**Fixtures** lists every pairing that is **Scheduled** or **In progress**. "
@@ -4431,7 +4615,7 @@ elif menu == "Fixtures & Results":
         "Standings and Leaderboard update live as each game is recorded. Dates/rounds use **Match Schedule** when generated."
     )
     if not st.session_state.groups or not any(st.session_state.groups.values()):
-        st.info("Create teams in **Player Import** or **Setup Groups** to see fixtures.")
+        st.info("Create teams in **Warm-Ups** or **Squads** to see fixtures.")
     else:
         sched = st.session_state.get("tournament_schedule") or []
         cdf, udf = fixt.build_completed_and_upcoming(
@@ -4443,7 +4627,7 @@ elif menu == "Fixtures & Results":
 
         st.subheader("✅ Results — completed clashes")
         if cdf.empty:
-            st.caption("No completed clashes yet. Finalize a clash under **Record a Clash** (all 5 games) to appear here.")
+            st.caption("No completed clashes yet. Finalize a clash under **Record** (all 5 games) to appear here.")
         else:
             _drop = [c for c in ("_g1", "_g2", "_ck") if c in cdf.columns]
             st.dataframe(cdf.drop(columns=_drop, errors="ignore"), use_container_width=True, hide_index=True)
@@ -4530,10 +4714,10 @@ elif menu == "Fixtures & Results":
             st.dataframe(udf.drop(columns=_udrop, errors="ignore"), use_container_width=True, hide_index=True)
 
         if not sched:
-            st.info("💡 Generate a **Match Schedule** to attach dates, times, and rounds to each fixture.")
+            st.info("💡 Generate **Matches** (schedule) to attach dates, times, and rounds to each fixture.")
 
-elif menu == "Standings & Qualifiers":
-    st.header("🏆 Tournament Standings & Qualification")
+elif menu == "Standings":
+    st.header("🏆 Standings · Points & qualification")
     
     if not st.session_state.tournament_data and st.session_state.standings.sum().sum() == 0:
         st.info("📝 No tournament matches recorded yet. Please record some clashes first!")
@@ -4568,7 +4752,7 @@ elif menu == "Standings & Qualifiers":
                 st.info(
                     f"📋 Qualification will be decided **after all matches are played**. "
                     f"Each team plays **{expected_matches_per_team}** match(es) in the round-robin. "
-                    f"Complete remaining clashes in **Record a Clash**."
+                    f"Complete remaining clashes in **Record**."
                 )
             else:
                 qualified_teams = standings_display.head(2)
@@ -4604,17 +4788,17 @@ elif menu == "Standings & Qualifiers":
             st.warning("⚠️ No valid tournament data available for standings calculation")
 
 
-# --- LEADERBOARD (Deciders / Chokers / Female standings; points, matches, form) ---
-elif menu == "Leaderboard":
-    st.header("🏆 Leaderboard")
+# --- STATS (Deciders / Chokers / Female; ICC-style “Stats” hub) ---
+elif menu == "Stats":
+    st.header("📈 Stats · Leaderboard")
     st.markdown(
         "Updates live with **Standings** — each recorded game counts. "
         "**Deciders** = games 1, 3 & 5; **Chokers** = games 2 & 4. **Female** = all games. "
-        "Points **+2** per game win."
+        "Points **+2** per game win. **Recent form** = last **5** games (🟢 win / 🔴 loss), oldest → newest."
     )
 
     if not st.session_state.groups or not any(st.session_state.groups.values()):
-        st.info("📝 No teams have been created yet. Create teams in **Player Import & Auto-Balance** to see the leaderboard.")
+        st.info("📝 No teams have been created yet. Create teams in **Warm-Ups** to see **Stats**.")
     else:
         group_names = st.session_state.get("group_names", {})
         subgroup_names = st.session_state.get("subgroup_names", DEFAULT_SUBGROUP_NAMES)
@@ -4668,7 +4852,7 @@ elif menu == "Leaderboard":
 
 
 # --- TAB 5: RECORD A CLASH ---
-elif menu == "Record a Clash":
+elif menu == "Record":
     # Check if user has permission to record clashes
     if not is_authenticated():
         st.error("🚫 Access Denied. Please login to record clashes.")
@@ -4679,7 +4863,7 @@ elif menu == "Record a Clash":
         st.error("🚫 Access Denied. Only administrators can record clashes.")
         st.stop()
     
-    st.header("⚔️ Record & Manage Group Clashes")
+    st.header("⚔️ Record · Group clashes & results")
 
     if "_test_gen_msg" in st.session_state:
         _kind, _msg = st.session_state.pop("_test_gen_msg")
@@ -4740,7 +4924,7 @@ elif menu == "Record a Clash":
 # --- TAB 6: MANAGE PLAYERS ---
 elif menu == "Manage Players":
     st.header("👥 Quick Player Management")
-    st.info("Use this for quick edits. For comprehensive setup, use the 'Setup Groups & Players' tab.")
+    st.info("Use this for quick edits. For full setup, use **Squads**.")
     
     for group_name, players in st.session_state.groups.items():
         st.subheader(f"📋 {group_name}")
@@ -4925,4 +5109,4 @@ elif menu == "User Management":
             - Can view team details & standings
             """)
         
-        st.info("🌐 **Guest/Public Access:** Anyone can view Team Details (skill levels hidden), Standings & Qualifiers, Fixtures & Results, and Leaderboard without logging in.")
+        st.info("🌐 **Guest/Public Access:** Anyone can view **Teams** (skill levels hidden), **Standings**, **Home** (fixtures), and **Stats** without logging in.")
