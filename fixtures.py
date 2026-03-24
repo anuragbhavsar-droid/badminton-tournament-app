@@ -412,20 +412,23 @@ def clash_games_detail_df(
     chok = subgroup_names.get("subgroup2", "Chokers")
     pool = [dec, chok, dec, chok, dec]
     n1, n2 = _display(group_names, g1_key), _display(group_names, g2_key)
-    def _player_names(pl_list: list) -> str:
-        if not pl_list:
-            return "—"
-        return ", ".join(
-            (p.get("name", p) if isinstance(p, dict) else str(p)) for p in pl_list
-        )
+
+    def _two_slots(pl_list: list) -> Tuple[str, str]:
+        xs = []
+        for p in pl_list or []:
+            s = (p.get("name", p) if isinstance(p, dict) else str(p)) or ""
+            s = str(s).strip()
+            if s:
+                xs.append(s)
+        return (xs[0] if len(xs) > 0 else "—", xs[1] if len(xs) > 1 else "—")
 
     rows = []
     for i, m in enumerate(matches[:5]):
         w = m.get("winner")
         wd = n1 if w == "g1" else n2 if w == "g2" else "—"
         pl = m.get("players") or {}
-        g1_pl = _player_names(pl.get("g1") or [])
-        g2_pl = _player_names(pl.get("g2") or [])
+        a1, a2 = _two_slots(pl.get("g1") or [])
+        b1, b2 = _two_slots(pl.get("g2") or [])
         rows.append(
             {
                 "Game": i + 1,
@@ -433,8 +436,10 @@ def clash_games_detail_df(
                 "Winner": wd,
                 "Score": m.get("score_display", "—"),
                 "Match pts": m.get("points", "—"),
-                f"Players ({n1})": g1_pl,
-                f"Players ({n2})": g2_pl,
+                f"P1 · {n1}": a1,
+                f"P2 · {n1}": a2,
+                f"P1 · {n2}": b1,
+                f"P2 · {n2}": b2,
             }
         )
     return pd.DataFrame(rows)

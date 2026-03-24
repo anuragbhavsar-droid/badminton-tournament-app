@@ -4834,6 +4834,16 @@ elif menu == PAGE_FIXTURES_RESULTS:
             sched,
         )
 
+        def _fixture_player_pair_slots(pl_list):
+            """Two cells for doubles (avoid one comma-separated column per team)."""
+            xs = []
+            for n in pl_list or []:
+                s = n.get("name", n) if isinstance(n, dict) else str(n)
+                s = (s or "").strip()
+                if s:
+                    xs.append(s)
+            return (xs[0] if len(xs) > 0 else "—", xs[1] if len(xs) > 1 else "—")
+
         st.subheader("✅ Results — completed clashes")
         if cdf.empty:
             st.caption("No completed clashes yet. Finalize a clash under **Record** (all 5 games) to appear here.")
@@ -4882,11 +4892,21 @@ elif menu == PAGE_FIXTURES_RESULTS:
                         _pl = _m.get("players") or {}
                         _g1_names = _pl.get("g1") or []
                         _g2_names = _pl.get("g2") or []
-                        _p1_str = ", ".join(_player_name(n) for n in _g1_names) or "—"
-                        _p2_str = ", ".join(_player_name(n) for n in _g2_names) or "—"
-                        st.caption(
-                            f"**Game {_i + 1}** ({_mt}): **{_team_label(_g1k)}** ({_p1_str}) vs **{_team_label(_g2k)}** ({_p2_str}) → Winner: **{_team_label(_win_team)}** {_m.get('score_display', '')} ({_m.get('points', 0)} pts)"
+                        _ap1, _ap2 = _fixture_player_pair_slots(_g1_names)
+                        _bp1, _bp2 = _fixture_player_pair_slots(_g2_names)
+                        st.markdown(
+                            f"**Game {_i + 1}** ({_mt}) → Winner: **{_team_label(_win_team)}** "
+                            f"{_m.get('score_display', '')} ({_m.get('points', 0)} pts)"
                         )
+                        _pc1, _pc2 = st.columns(2)
+                        with _pc1:
+                            st.caption(f"**{_team_label(_g1k)}**")
+                            st.caption(f"P1 · {_ap1}")
+                            st.caption(f"P2 · {_ap2}")
+                        with _pc2:
+                            st.caption(f"**{_team_label(_g2k)}**")
+                            st.caption(f"P1 · {_bp1}")
+                            st.caption(f"P2 · {_bp2}")
                     st.divider()
                     st.markdown("**Per-game detail** *(expand for set scores)*")
                     for _i in range(5):
@@ -4903,12 +4923,21 @@ elif menu == PAGE_FIXTURES_RESULTS:
                             st.caption(f"**Match type**: {_mt}")
                             # Second level: player details and game points (from tournament_matches / match data)
                             st.divider()
-                            st.markdown("**Player details & set scores** *(from match data)*")
+                            st.markdown("**Players & set scores** *(from match data)*")
                             _pl = _m.get("players") or {}
                             _g1_names = _pl.get("g1") or []
                             _g2_names = _pl.get("g2") or []
-                            st.caption(f"**{_team_label(_g1k)}**: {', '.join(_player_name(n) for n in _g1_names) or '—'}")
-                            st.caption(f"**{_team_label(_g2k)}**: {', '.join(_player_name(n) for n in _g2_names) or '—'}")
+                            _ap1, _ap2 = _fixture_player_pair_slots(_g1_names)
+                            _bp1, _bp2 = _fixture_player_pair_slots(_g2_names)
+                            _plc1, _plc2 = st.columns(2)
+                            with _plc1:
+                                st.markdown(f"**{_team_label(_g1k)}**")
+                                st.caption(f"P1 · {_ap1}")
+                                st.caption(f"P2 · {_ap2}")
+                            with _plc2:
+                                st.markdown(f"**{_team_label(_g2k)}**")
+                                st.caption(f"P1 · {_bp1}")
+                                st.caption(f"P2 · {_bp2}")
                             _ss = _m.get("set_scores") or {}
                             _s1 = _format_set_score(_ss.get("set1"))
                             _s2 = _format_set_score(_ss.get("set2"))
@@ -4924,8 +4953,8 @@ elif menu == PAGE_FIXTURES_RESULTS:
 
             st.subheader("📋 Clash details (plan & schedule)")
             st.caption(
-                "**Team A / Team B** in player columns follow the **Meeting** column (same order as the fixtures table). "
-                "Each row is one **game** (1–5) inside that clash."
+                "**Team A** is the first team in the row above; **P1 · A / P2 · A** are that team’s two players. "
+                "**P1 · B / P2 · B** are **Team B**’s players. Each row is one **game** (1–5) in that clash."
             )
             _gn_u = st.session_state.get("group_names", {})
             _sub_u = st.session_state.get("subgroup_names", DEFAULT_SUBGROUP_NAMES)
@@ -4964,18 +4993,22 @@ elif menu == PAGE_FIXTURES_RESULTS:
                 _g2k = str(_ur["_g2"])
                 _ck_u = _ur.get("_ck") or fixt.canonical_clash_key(_g1k, _g2k)
                 _um = fixt.coerce_five_match_slots(_td_u.get(_ck_u, []))
-                _meet = f"{_ur['Team A']} vs {_ur['Team B']}"
                 _clash_no = _ui + 1
+                _ta_name = _ur["Team A"]
+                _tb_name = _ur["Team B"]
 
                 if str(_ur.get("Status")) == "Scheduled" and not fixt.upcoming_has_planned_lineup(_um):
                     _detail_rows.append(
                         {
                             "Clash #": _clash_no,
                             "Game #": "—",
-                            "Meeting": _meet,
+                            "Team A": _ta_name,
+                            "Team B": _tb_name,
                             "Pool": "—",
-                            "Players (Team A)": "—",
-                            "Players (Team B)": "—",
+                            "P1 · A": "—",
+                            "P2 · A": "—",
+                            "P1 · B": "—",
+                            "P2 · B": "—",
                             "Court": "—",
                             "Time": "—",
                             "Result": "No plan saved yet",
@@ -4987,8 +5020,8 @@ elif menu == PAGE_FIXTURES_RESULTS:
                     _gm = _um[_gi]
                     _mt = _dec_u if _pool_u[_gi] == "subgroup1" else _chok_u
                     _pl = _gm.get("players") or {}
-                    _a = ", ".join(_pn_u(n) for n in (_pl.get("g1") or [])) or "—"
-                    _b = ", ".join(_pn_u(n) for n in (_pl.get("g2") or [])) or "—"
+                    _a1, _a2 = _fixture_player_pair_slots(_pl.get("g1") or [])
+                    _b1, _b2 = _fixture_player_pair_slots(_pl.get("g2") or [])
                     _fx = _gm.get("fixture") or {}
                     _court = _fx_court(_fx)
                     _time = _fx_time(_fx)
@@ -5008,10 +5041,13 @@ elif menu == PAGE_FIXTURES_RESULTS:
                         {
                             "Clash #": _clash_no,
                             "Game #": _gi + 1,
-                            "Meeting": _meet,
+                            "Team A": _ta_name,
+                            "Team B": _tb_name,
                             "Pool": _mt,
-                            "Players (Team A)": _a,
-                            "Players (Team B)": _b,
+                            "P1 · A": _a1,
+                            "P2 · A": _a2,
+                            "P1 · B": _b1,
+                            "P2 · B": _b2,
                             "Court": _court,
                             "Time": _time,
                             "Result": _res,
