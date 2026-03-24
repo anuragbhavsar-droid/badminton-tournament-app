@@ -264,6 +264,59 @@ def _last_game_timestamp(matches: List[dict]) -> str:
     return max(ts) if ts else "—"
 
 
+def _earliest_fixture_window_from_matches(matches: List[dict]) -> Optional[str]:
+    """
+    Display line for when/where from per-game fixture dicts (Record → Plan lineup & schedule).
+    Picks the lexicographically earliest start_datetime / date+time across the five slots.
+    """
+    best_key: Optional[str] = None
+    best_label: Optional[str] = None
+    for m in matches[:5]:
+        if not isinstance(m, dict):
+            continue
+        fx = m.get("fixture") or {}
+        sd = fx.get("start_datetime")
+        if sd:
+            sk = str(sd).replace("T", " ")[:19]
+            court = str(fx.get("court") or "").strip()
+            label = sk[:16] if len(sk) >= 16 else sk
+            if court:
+                label = f"{label} · {court}"
+            if best_key is None or sk < best_key:
+                best_key = sk
+                best_label = label
+            continue
+        d = str(fx.get("date") or "").strip()
+        t = str(fx.get("start_time") or "").strip()
+        if d or t:
+            sk = f"{d} {t}".strip()
+            court = str(fx.get("court") or "").strip()
+            label = sk + (f" · {court}" if court else "")
+            if best_key is None or sk < best_key:
+                best_key = sk
+                best_label = label
+    return best_label
+
+
+def _upcoming_has_planned_lineup(matches: List[dict]) -> bool:
+    """True if any game has a saved lineup but no recorded winner yet (Record plan or partial plan)."""
+    for m in matches[:5]:
+        if not isinstance(m, dict):
+            continue
+        if normalize_match_winner(m) is not None:
+            continue
+        if m.get("planned") and has_lineup(m):
+            return True
+        if has_lineup(m):
+            return True
+    return False
+
+
+def upcoming_has_planned_lineup(matches: List[dict]) -> bool:
+    """Public alias for UI (e.g. Fixtures page)."""
+    return _upcoming_has_planned_lineup(matches)
+
+
 def build_completed_and_upcoming(
     groups: Dict[str, List],
     group_names: Dict[str, str],
@@ -286,7 +339,10 @@ def build_completed_and_upcoming(
         matches = coerce_five_match_slots((tournament_data or {}).get(ck, []))
         n1, n2 = _display(group_names, g1), _display(group_names, g2)
         slot = _pair_slot_in_schedule(g1, g2, sched, group_keys, group_names)
-        sched_label = f"{slot[0]} · {slot[1]}" if slot else "—"
+        sched_label = f"{slot[0]} · {slot[1]}" if slot else None
+        plan_when = _earliest_fixture_window_from_matches(matches)
+        # Prefer global Match Schedule row; else show time/court from Record → Plan
+        when_label = sched_label if sched_label else (plan_when if plan_when else "—")
         rnd = slot[2] if slot else None
 
         if is_clash_fully_recorded(matches):
@@ -302,7 +358,7 @@ def build_completed_and_upcoming(
                     "Winner": winner_name,
                     "Games (wins)": games,
                     "Round": rnd if rnd else "—",
-                    "Scheduled window": sched_label,
+                    "Scheduled window": when_label,
                     "_g1": g1,
                     "_g2": g2,
                     "_ck": ck,
@@ -312,11 +368,13 @@ def build_completed_and_upcoming(
             partial = count_recorded_games(matches)
             if partial > 0:
                 status = f"In progress ({partial}/5 games)"
+            elif upcoming_has_planned_lineup(matches):
+                status = "Planned"
             else:
                 status = "Scheduled"
             upcoming_rows.append(
                 {
-                    "Scheduled": sched_label,
+                    "_sort_key": when_label,
                     "Round": rnd if rnd else "—",
                     "Team A": n1,
                     "Team B": n2,
@@ -333,10 +391,10 @@ def build_completed_and_upcoming(
 
     udf = pd.DataFrame(upcoming_rows)
     if not udf.empty:
-        udf["_sort"] = udf["Scheduled"].apply(
+        udf["_sort"] = udf["_sort_key"].apply(
             lambda x: x if x and str(x) != "—" else "9999-12-31 99:99"
         )
-        udf = udf.sort_values("_sort").drop(columns=["_sort"]).reset_index(drop=True)
+        udf = udf.sort_values("_sort").drop(columns=["_sort", "_sort_key"]).reset_index(drop=True)
 
     return cdf, udf
 

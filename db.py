@@ -10,7 +10,7 @@ Persists full match information per game in tournament_matches (data_json).
 import json
 import os
 import random
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -266,6 +266,7 @@ def save_tournament_data(
     tournament_data: Dict[str, List[Dict]],
     users: Dict[str, Any],
     clash_edit_history: List[Dict],
+    knockout_bracket: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Persist all tournament state to Supabase."""
     sb = _get_supabase()
@@ -292,6 +293,7 @@ def save_tournament_data(
         ("subgroup_names", subgroup_names),
         ("groups", groups),
         ("detailed_groups", detailed_groups),
+        ("knockout_bracket", knockout_bracket if knockout_bracket is not None else {}),
     ]:
         sb.table("config").upsert(
             [{"key": key, "value_json": obj}],
@@ -393,6 +395,7 @@ def migrate_json_to_db_if_needed() -> None:
         tournament_data=tournament_data,
         users=users,
         clash_edit_history=clash_edit_history,
+        knockout_bracket=td.get("knockout_bracket", {}),
     )
 
 
@@ -429,6 +432,7 @@ def load_tournament_data() -> Dict[str, Any]:
     result["subgroup_names"] = config.get("subgroup_names", _default_subgroup_names())
     result["groups"] = config.get("groups", _default_groups())
     result["detailed_groups"] = config.get("detailed_groups", {})
+    result["knockout_bracket"] = config.get("knockout_bracket") or {}
 
     # Standings: all columns (backward compatible if migration not applied)
     try:
@@ -512,6 +516,7 @@ def _default_state() -> Dict[str, Any]:
         "users": {},
         "clash_edit_history": [],
         "clashes": [],
+        "knockout_bracket": {},
     }
 
 

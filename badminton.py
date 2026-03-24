@@ -35,6 +35,11 @@ DEFAULT_GROUP_NAMES = {
     "Group F": "Cyclone Squad (F)",
 }
 
+# Knockout (post round-robin): storage keys separate from canonical A_vs_B league clashes
+KO_SEMI1 = "KO_SEMI1"
+KO_SEMI2 = "KO_SEMI2"
+KO_FINAL = "KO_FINAL"
+
 # Page Configuration (mobile-first: collapsed sidebar on load; layout wide for desktop)
 st.set_page_config(
     page_title="Tournament Hub | Badminton Premier League",
@@ -566,6 +571,7 @@ def save_tournament_data():
             tournament_data=st.session_state.get('tournament_data', {}),
             users=st.session_state.get('users', {}),
             clash_edit_history=st.session_state.get('clash_edit_history', []),
+            knockout_bracket=st.session_state.get('knockout_bracket', {}),
         )
         return True
     except Exception as e:
@@ -583,6 +589,7 @@ def _apply_data_to_session(data):
     st.session_state.tournament_data = data.get('tournament_data', {})
     st.session_state.clash_edit_history = data.get('clash_edit_history', [])
     st.session_state.clashes = data.get('clashes', [])
+    st.session_state.knockout_bracket = data.get('knockout_bracket') or {}
     saved_users = data.get('users', {})
     st.session_state.users = saved_users if saved_users else {}
 
@@ -627,6 +634,7 @@ def _push_full_state_to_supabase() -> tuple:
             tournament_data=st.session_state.get("tournament_data", {}),
             users=st.session_state.get("users", {}),
             clash_edit_history=st.session_state.get("clash_edit_history", []),
+            knockout_bracket=st.session_state.get("knockout_bracket", {}),
         )
         return True, None
     except Exception as e:
@@ -1553,6 +1561,76 @@ def calculate_standings():
         ).reset_index(drop=True)
     return df
 
+
+def _standings_row_to_group_key(row, groups, group_names):
+    tn = row.get("Team name") or ""
+    for gk in groups:
+        if group_names.get(gk, gk) == tn or str(gk) == str(tn):
+            return gk
+    return None
+
+
+def knockout_seeds_from_standings(standings_df, groups, group_names):
+    if standings_df is None or standings_df.empty:
+        return []
+    out = []
+    for _, row in standings_df.head(4).iterrows():
+        gk = _standings_row_to_group_key(row, groups, group_names)
+        if gk:
+            out.append(gk)
+    return out
+
+
+def knockout_pair_for_storage_key(storage_key, seeds):
+    if not seeds or len(seeds) < 4:
+        return None, None
+    if storage_key == KO_SEMI1:
+        return seeds[0], seeds[3]
+    if storage_key == KO_SEMI2:
+        return seeds[1], seeds[2]
+    return None, None
+
+
+def knockout_finalist_pair(td, seeds):
+    if not seeds or len(seeds) < 4:
+        return None, None
+    s1 = fixt.coerce_five_match_slots(td.get(KO_SEMI1, []))
+    s2 = fixt.coerce_five_match_slots(td.get(KO_SEMI2, []))
+    lk1, rk1 = sorted([seeds[0], seeds[3]], key=str)
+    lk2, rk2 = sorted([seeds[1], seeds[2]], key=str)
+    w1 = fixt.clash_winner_group_key(s1, lk1, rk1)
+    w2 = fixt.clash_winner_group_key(s2, lk2, rk2)
+    if not w1 or not w2:
+        return None, None
+    return w1, w2
+
+
+def _knockout_clash_edit_label(ck, bracket, group_names):
+    seeds = bracket.get("seeds") or []
+    if ck == KO_SEMI1 and len(seeds) >= 4:
+        return f"Knockout · Semi 1 · {group_names.get(seeds[0], seeds[0])} vs {group_names.get(seeds[3], seeds[3])}"
+    if ck == KO_SEMI2 and len(seeds) >= 4:
+        return f"Knockout · Semi 2 · {group_names.get(seeds[1], seeds[1])} vs {group_names.get(seeds[2], seeds[2])}"
+    if ck == KO_FINAL and len(seeds) >= 4:
+        td = st.session_state.tournament_data or {}
+        w1, w2 = knockout_finalist_pair(td, seeds)
+        if w1 and w2:
+            return f"Knockout · Final · {group_names.get(w1, w1)} vs {group_names.get(w2, w2)}"
+        return "Knockout · Final"
+    return f"Knockout · {ck}"
+
+
+def _knockout_groups_for_key(ck, bracket, td):
+    seeds = bracket.get("seeds") or []
+    if ck == KO_SEMI1:
+        return knockout_pair_for_storage_key(KO_SEMI1, seeds)
+    if ck == KO_SEMI2:
+        return knockout_pair_for_storage_key(KO_SEMI2, seeds)
+    if ck == KO_FINAL:
+        return knockout_finalist_pair(td, seeds)
+    return None, None
+
+
 def record_new_clash():
     """Function to handle new clash recording"""
     col1, col2 = st.columns(2)
@@ -1579,6 +1657,56 @@ def record_new_clash():
         record_clash_matches(g1, g2, "new", show_intro=True)
     with tab_plan:
         plan_clash_meeting(g1, g2)
+
+
+def render_knockout_record_section():
+    """Semi-finals (1v4, 2v3) and final — uses KO_* storage keys."""
+    bracket = st.session_state.get("knockout_bracket") or {}
+    seeds = bracket.get("seeds") or []
+    gn = st.session_state.group_names
+    td = st.session_state.tournament_data or {}
+    st.subheader("Knockout stage (semi-finals & final)")
+    if len(seeds) < 4:
+        st.info(
+            "When the round-robin is complete, open **Standings** and use **Create knockout bracket from top 4**. "
+            "Then return here to record semi-finals and the final."
+        )
+        return
+    st.caption("Knockout meetings are stored separately from league clashes (they do not overwrite round-robin results).")
+
+    g1a, g1b = knockout_pair_for_storage_key(KO_SEMI1, seeds)
+    g2a, g2b = knockout_pair_for_storage_key(KO_SEMI2, seeds)
+    wf1, wf2 = knockout_finalist_pair(td, seeds)
+
+    with st.expander(f"Semi-final 1 · #1 {gn.get(g1a, g1a)} vs #4 {gn.get(g1b, g1b)}", expanded=True):
+        tab_r, tab_p = st.tabs(["📝 Record scores", "📋 Plan lineup & schedule"])
+        with tab_r:
+            record_clash_matches(g1a, g1b, "new", show_intro=False, storage_key=KO_SEMI1)
+        with tab_p:
+            plan_clash_meeting(g1a, g1b, storage_key=KO_SEMI1)
+
+    with st.expander(f"Semi-final 2 · #2 {gn.get(g2a, g2a)} vs #3 {gn.get(g2b, g2b)}", expanded=False):
+        tab_r, tab_p = st.tabs(["📝 Record scores", "📋 Plan lineup & schedule"])
+        with tab_r:
+            record_clash_matches(g2a, g2b, "new", show_intro=False, storage_key=KO_SEMI2)
+        with tab_p:
+            plan_clash_meeting(g2a, g2b, storage_key=KO_SEMI2)
+
+    if wf1 and wf2:
+        with st.expander(f"Final · {gn.get(wf1, wf1)} vs {gn.get(wf2, wf2)}", expanded=False):
+            tab_r, tab_p = st.tabs(["📝 Record scores", "📋 Plan lineup & schedule"])
+            with tab_r:
+                record_clash_matches(wf1, wf2, "new", show_intro=False, storage_key=KO_FINAL)
+            with tab_p:
+                plan_clash_meeting(wf1, wf2, storage_key=KO_FINAL)
+        mf = fixt.coerce_five_match_slots(td.get(KO_FINAL, []))
+        lk, rk = sorted([wf1, wf2], key=str)
+        champ = fixt.clash_winner_group_key(mf, lk, rk) if fixt.is_clash_fully_recorded(mf) else None
+        if champ:
+            st.success(f"🏆 **Knockout champion:** {gn.get(champ, champ)}")
+    else:
+        st.info("Complete **both semi-finals** (all 5 games each) to unlock the final.")
+
 
 def edit_clash_results():
     """Function to handle editing existing clash results"""
@@ -1614,6 +1742,22 @@ def edit_clash_results():
             "display": f"{gn.get(lk, lk)} vs {gn.get(rk, rk)}",
             "g1": lk,
             "g2": rk,
+            "storage_key": None,
+        })
+
+    bracket = st.session_state.get("knockout_bracket") or {}
+    for clash_key in td.keys():
+        if not str(clash_key).startswith("KO_"):
+            continue
+        kg1, kg2 = _knockout_groups_for_key(clash_key, bracket, td)
+        if not kg1 or not kg2:
+            continue
+        clash_options.append({
+            "key": clash_key,
+            "display": _knockout_clash_edit_label(clash_key, bracket, gn),
+            "g1": kg1,
+            "g2": kg2,
+            "storage_key": clash_key,
         })
     
     if not clash_options:
@@ -1651,7 +1795,14 @@ def edit_clash_results():
                 st.write(f"**Match {i+1}** ({mt}): {result.get('winner_display', 'Unknown')} wins {result.get('score_display', '')} – {result.get('points', 0)} pts. Players: {players_str}")
         
         # Edit interface
-        record_clash_matches(selected_clash['g1'], selected_clash['g2'], "edit", selected_clash['key'])
+        record_clash_matches(
+            selected_clash["g1"],
+            selected_clash["g2"],
+            "edit",
+            selected_clash["key"],
+            show_intro=False,
+            storage_key=selected_clash.get("storage_key"),
+        )
 
 def view_clash_results():
     """Function for admins to view clash results (read-only)"""
@@ -1659,6 +1810,8 @@ def view_clash_results():
         st.info("📝 No recorded clashes available.")
         return
     
+    gn = st.session_state.get("group_names", {})
+    bracket = st.session_state.get("knockout_bracket") or {}
     for clash_key, results in st.session_state.tournament_data.items():
         if '_vs_' in clash_key:
             parts = clash_key.split('_vs_')
@@ -1693,6 +1846,34 @@ def view_clash_results():
                             st.metric(f"{parts[1]}", f"{g2_wins} wins, {total_g2_points} points")
                     else:
                         st.write("No match data available")
+        elif str(clash_key).startswith("KO_"):
+            label = _knockout_clash_edit_label(clash_key, bracket, gn)
+            with st.expander(f"🏆 {label}"):
+                if results:
+                    total_g1_points = 0
+                    total_g2_points = 0
+                    g1_wins = 0
+                    g2_wins = 0
+                    for i, result in enumerate(results):
+                        winner = result.get('winner_display', 'Unknown')
+                        score = result.get('score_display', '')
+                        points = result.get('points', 0)
+                        st.write(f"**Match {i+1}:** {winner} wins {score} - {points} points")
+                        if result.get('winner') == 'g1':
+                            total_g1_points += points
+                            g1_wins += 1
+                        elif result.get('winner') == 'g2':
+                            total_g2_points += points
+                            g2_wins += 1
+                    st.markdown("---")
+                    st.caption("Sides follow storage order (sorted team keys).")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Side g1", f"{g1_wins} wins, {total_g1_points} points")
+                    with col2:
+                        st.metric("Side g2", f"{g2_wins} wins, {total_g2_points} points")
+                else:
+                    st.write("No match data available")
 
 def show_edit_history():
     """Function to display clash edit history"""
@@ -2139,15 +2320,18 @@ def _fixture_schedule_display_line(fx: dict) -> str:
     return ""
 
 
-def plan_clash_meeting(g1, g2):
+def plan_clash_meeting(g1, g2, storage_key=None):
     """
     Save per-game lineup + court/date/time into tournament_data (same 5 slots as Record a Clash).
     Uses the same Deciders/Chokers pools, no reuse, and female-matching rules.
     """
     td = st.session_state.tournament_data
-    fixt.migrate_clash_pair_to_canonical(td, g1, g2)
     left_k, right_k = sorted([str(g1).strip(), str(g2).strip()], key=str)
-    ck = f"{left_k}_vs_{right_k}"
+    if storage_key:
+        ck = storage_key
+    else:
+        fixt.migrate_clash_pair_to_canonical(td, g1, g2)
+        ck = f"{left_k}_vs_{right_k}"
     user_g1_is_left = str(g1).strip() == left_k
     subgroup_names = st.session_state.get("subgroup_names", DEFAULT_SUBGROUP_NAMES)
     match_pool_type = ["subgroup1", "subgroup2", "subgroup1", "subgroup2", "subgroup1"]
@@ -2267,23 +2451,23 @@ def plan_clash_meeting(g1, g2):
                 if st.button(f"💾 Save plan — Game {i + 1}", key=f"plan_save_{ck}_{i}"):
                     if len(p1) != 2 or len(p2) != 2:
                         st.error("Select two players per team.")
-                    elif start_dt is None:
-                        st.error("Choose **Date & time** (or clear the widget to reset).")
                     else:
                         if user_g1_is_left:
                             canon = {"g1": list(p1), "g2": list(p2)}
                         else:
                             canon = {"g1": list(p2), "g2": list(p1)}
                         base = fixt.coerce_five_match_slots(td.get(ck, []))
+                        fx_dict: dict = {}
+                        if court_v.strip():
+                            fx_dict["court"] = court_v.strip()
+                        if start_dt is not None:
+                            fx_dict["start_datetime"] = start_dt.isoformat(timespec="minutes")
+                            fx_dict["date"] = start_dt.date().isoformat()
+                            fx_dict["start_time"] = start_dt.strftime("%H:%M")
                         base[i] = {
                             "planned": True,
                             "players": canon,
-                            "fixture": {
-                                "court": court_v.strip(),
-                                "start_datetime": start_dt.isoformat(timespec="minutes"),
-                                "date": start_dt.date().isoformat(),
-                                "start_time": start_dt.strftime("%H:%M"),
-                            },
+                            "fixture": fx_dict,
                         }
                         td[ck] = base
                         st.session_state.tournament_data = td
@@ -2300,31 +2484,40 @@ def plan_clash_meeting(g1, g2):
                     st.rerun()
 
 
-def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
-    """Function to record or edit clash matches"""
+def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True, storage_key=None):
+    """Record or edit clash matches. Use storage_key for knockout (KO_SEMI1, KO_SEMI2, KO_FINAL)."""
     td = st.session_state.tournament_data
+    left_k, right_k = sorted([str(g1).strip(), str(g2).strip()], key=str)
     if mode == "new":
         st.subheader(f"Clash Details: {g1} vs {g2}")
         if show_intro:
-            st.caption(
-                "Same opponents always share one saved meeting — **Group 1 / Group 2 order does not matter**."
-            )
+            if not storage_key:
+                st.caption(
+                    "Same opponents always share one saved meeting — **Group 1 / Group 2 order does not matter**."
+                )
+            else:
+                st.caption(
+                    "**Knockout meeting** — stored separately from the round-robin clash between these teams."
+                )
             st.success(
                 "Each **Submit Clash #n** saves that game immediately. **Standings** and **Leaderboard** update when the clash is **Completed** (all 5 games)."
             )
             st.caption(
                 "💡 **Planned lineups** (from **Plan lineup & schedule**) appear here — you only add **set scores** and submit."
             )
-        fixt.migrate_clash_pair_to_canonical(td, g1, g2)
-        left_k, right_k = sorted([str(g1).strip(), str(g2).strip()], key=str)
-        current_clash_key = f"{left_k}_vs_{right_k}"
+        if storage_key:
+            current_clash_key = storage_key
+        else:
+            fixt.migrate_clash_pair_to_canonical(td, g1, g2)
+            current_clash_key = f"{left_k}_vs_{right_k}"
         sk = f"recorded_matches_{current_clash_key}"
-        for alt in (
-            f"recorded_matches_{g1}_vs_{g2}",
-            f"recorded_matches_{g2}_vs_{g1}",
-        ):
-            if alt != sk and alt in st.session_state:
-                del st.session_state[alt]
+        if not storage_key:
+            for alt in (
+                f"recorded_matches_{g1}_vs_{g2}",
+                f"recorded_matches_{g2}_vs_{g1}",
+            ):
+                if alt != sk and alt in st.session_state:
+                    del st.session_state[alt]
         if sk not in st.session_state:
             st.session_state[sk] = {}
         existing = fixt.coerce_five_match_slots(td.get(current_clash_key))
@@ -2333,11 +2526,13 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
                 st.session_state[sk][i] = existing[i]
     else:
         st.info("Edit clash results. Changes will be logged for audit purposes.")
-        parts = (clash_key or "").split("_vs_", 1)
-        if len(parts) == 2:
-            fixt.migrate_clash_pair_to_canonical(td, parts[0].strip(), parts[1].strip())
-        left_k, right_k = sorted([str(g1).strip(), str(g2).strip()], key=str)
-        current_clash_key = f"{left_k}_vs_{right_k}"
+        if storage_key:
+            current_clash_key = storage_key
+        else:
+            parts = (clash_key or "").split("_vs_", 1)
+            if len(parts) == 2:
+                fixt.migrate_clash_pair_to_canonical(td, parts[0].strip(), parts[1].strip())
+            current_clash_key = f"{left_k}_vs_{right_k}"
         ek_old = f"edit_matches_{clash_key}" if clash_key else None
         if ek_old and ek_old != f"edit_matches_{current_clash_key}" and ek_old in st.session_state:
             del st.session_state[ek_old]
@@ -2390,6 +2585,7 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
     
     session_key = f"recorded_matches_{current_clash_key}" if mode == "new" else f"edit_matches_{current_clash_key}"
     user_g1_is_left = str(g1).strip() == left_k
+    widget_key_suffix = str(current_clash_key).replace(" ", "_")
 
     def _record_team_label(k):
         return st.session_state.group_names.get(k, k)
@@ -2556,14 +2752,14 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
                     with col1:
                         st.markdown(f"**{g1} Team** ({subgroup_names.get(pool_type, pool_type)})")
                         g1_p1_options = [""] + available_g1
-                        g1_p1 = st.selectbox(f"{g1} – Player 1", g1_p1_options, key=f"{mode}_g1_p1_m{i}")
+                        g1_p1 = st.selectbox(f"{g1} – Player 1", g1_p1_options, key=f"{mode}_g1_p1_m{i}_{widget_key_suffix}")
                         g1_p2_options = [""] + [n for n in available_g1 if n != g1_p1]
-                        g1_p2 = st.selectbox(f"{g1} – Player 2", g1_p2_options, key=f"{mode}_g1_p2_m{i}")
+                        g1_p2 = st.selectbox(f"{g1} – Player 2", g1_p2_options, key=f"{mode}_g1_p2_m{i}_{widget_key_suffix}")
                         p1 = [x for x in [g1_p1, g1_p2] if x]
                     with col2:
                         st.markdown(f"**{g2} Team** ({subgroup_names.get(pool_type, pool_type)}) – must match female count")
                         g2_p1_options = [""] + available_g2
-                        g2_p1 = st.selectbox(f"{g2} – Player 1", g2_p1_options, key=f"{mode}_g2_p1_m{i}")
+                        g2_p1 = st.selectbox(f"{g2} – Player 1", g2_p1_options, key=f"{mode}_g2_p1_m{i}_{widget_key_suffix}")
                         g1_female_count = sum(1 for n in p1 if name_to_gender.get(str(n), "M") == "F") if len(p1) == 2 else None
                         g2_p2_candidates = [n for n in available_g2 if n != g2_p1]
                         if g2_p1 and g1_female_count is not None:
@@ -2579,7 +2775,7 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
                             else:
                                 g2_p2_candidates = [n for n in g2_p2_candidates if name_to_gender.get(str(n), "M") == "F"]
                         g2_p2_options = [""] + g2_p2_candidates
-                        g2_p2 = st.selectbox(f"{g2} – Player 2 (match female count)", g2_p2_options, key=f"{mode}_g2_p2_m{i}")
+                        g2_p2 = st.selectbox(f"{g2} – Player 2 (match female count)", g2_p2_options, key=f"{mode}_g2_p2_m{i}_{widget_key_suffix}")
                         p2 = [x for x in [g2_p1, g2_p2] if x]
 
                 st.divider()
@@ -2590,9 +2786,9 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
                 # Set 1
                 set1_col1, set1_col2, set1_col3 = st.columns([1, 1, 2])
                 with set1_col1:
-                    set1_g1 = st.number_input(f"Set 1 - {g1}", min_value=0, max_value=30, value=0, key=f"{mode}_set1_g1_{i}")
+                    set1_g1 = st.number_input(f"Set 1 - {g1}", min_value=0, max_value=30, value=0, key=f"{mode}_set1_g1_{i}_{widget_key_suffix}")
                 with set1_col2:
-                    set1_g2 = st.number_input(f"Set 1 - {g2}", min_value=0, max_value=30, value=0, key=f"{mode}_set1_g2_{i}")
+                    set1_g2 = st.number_input(f"Set 1 - {g2}", min_value=0, max_value=30, value=0, key=f"{mode}_set1_g2_{i}_{widget_key_suffix}")
                 with set1_col3:
                     if set1_g1 > set1_g2:
                         st.success(f"✅ {g1} wins Set 1")
@@ -2604,9 +2800,9 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
                 # Set 2
                 set2_col1, set2_col2, set2_col3 = st.columns([1, 1, 2])
                 with set2_col1:
-                    set2_g1 = st.number_input(f"Set 2 - {g1}", min_value=0, max_value=30, value=0, key=f"{mode}_set2_g1_{i}")
+                    set2_g1 = st.number_input(f"Set 2 - {g1}", min_value=0, max_value=30, value=0, key=f"{mode}_set2_g1_{i}_{widget_key_suffix}")
                 with set2_col2:
-                    set2_g2 = st.number_input(f"Set 2 - {g2}", min_value=0, max_value=30, value=0, key=f"{mode}_set2_g2_{i}")
+                    set2_g2 = st.number_input(f"Set 2 - {g2}", min_value=0, max_value=30, value=0, key=f"{mode}_set2_g2_{i}_{widget_key_suffix}")
                 with set2_col3:
                     if set2_g1 > set2_g2:
                         st.success(f"✅ {g1} wins Set 2")
@@ -2627,12 +2823,12 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
                     set3_g1 = st.number_input(f"Set 3 - {g1}", 
                                             min_value=0, max_value=30, value=0, 
                                             disabled=match_decided,
-                                            key=f"{mode}_set3_g1_{i}")
+                                            key=f"{mode}_set3_g1_{i}_{widget_key_suffix}")
                 with set3_col2:
                     set3_g2 = st.number_input(f"Set 3 - {g2}", 
                                             min_value=0, max_value=30, value=0, 
                                             disabled=match_decided,
-                                            key=f"{mode}_set3_g2_{i}")
+                                            key=f"{mode}_set3_g2_{i}_{widget_key_suffix}")
                 with set3_col3:
                     if match_decided:
                         st.info("🚫 Set 3 not needed - clash already decided")
@@ -2665,7 +2861,7 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
                     # Edit reason field for edit mode
                     edit_reason = ""
                     if mode == "edit":
-                        edit_reason = st.text_input(f"Reason for edit (Clash {i+1})", key=f"edit_reason_{i}", 
+                        edit_reason = st.text_input(f"Reason for edit (Clash {i+1})", key=f"edit_reason_{i}_{widget_key_suffix}", 
                                                   placeholder="e.g., Score correction, Player change")
                     
                     if st.button(f"✅ {'Update' if mode == 'edit' else 'Submit'} Clash #{i+1}", 
@@ -2778,7 +2974,8 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True):
         
         if mode == "edit":
             final_edit_reason = st.text_input("Overall reason for clash edit:", 
-                                            placeholder="e.g., Multiple score corrections needed")
+                                            placeholder="e.g., Multiple score corrections needed",
+                                            key=f"final_edit_ov_{widget_key_suffix}")
         
         if st.button(
             button_text,
@@ -4622,10 +4819,9 @@ elif menu == "Matches":
 elif menu == PAGE_FIXTURES_RESULTS:
     st.header(f"📋 {PAGE_FIXTURES_RESULTS}")
     st.markdown(
-        "**Clash lifecycle:** **Scheduled** (not started) → **In progress** (1–4 games recorded) → **Completed** (all 5 games). "
-        "**Fixtures** lists every pairing that is **Scheduled** or **In progress**. "
-        "**Completed clashes** lists meetings that are fully done (all 5 games). "
-        "Standings and Leaderboard update live as each game is recorded. Dates/rounds use **Match Schedule** when generated."
+        "**Clash lifecycle:** **Scheduled** (no plan yet) → **Planned** (lineups saved under **Record → Plan lineup & schedule**) → "
+        "**In progress** (1–4 games recorded) → **Completed** (all 5 games). "
+        "Open **Clash details (plan & schedule)** below for lineups, courts, and times saved from **Record**."
     )
     if not st.session_state.groups or not any(st.session_state.groups.values()):
         st.info("Create teams in **Warm-Ups** or **Squads** to see fixtures.")
@@ -4642,8 +4838,8 @@ elif menu == PAGE_FIXTURES_RESULTS:
         if cdf.empty:
             st.caption("No completed clashes yet. Finalize a clash under **Record** (all 5 games) to appear here.")
         else:
-            _drop = [c for c in ("_g1", "_g2", "_ck") if c in cdf.columns]
-            st.dataframe(cdf.drop(columns=_drop, errors="ignore"), use_container_width=True, hide_index=True)
+            _hide_results = [c for c in ("_g1", "_g2", "_ck", "Round", "Scheduled window") if c in cdf.columns]
+            st.dataframe(cdf.drop(columns=_hide_results, errors="ignore"), use_container_width=True, hide_index=True)
             st.subheader("📋 Clash details")
             st.caption("First level: result summary. Second level: player names and set-by-set game points from match data.")
             _gn = st.session_state.get("group_names", {})
@@ -4723,11 +4919,115 @@ elif menu == PAGE_FIXTURES_RESULTS:
         if udf.empty:
             st.caption("No pairings to show (need at least two groups with players).")
         else:
-            _udrop = [c for c in ("_g1", "_g2", "_ck") if c in udf.columns]
-            st.dataframe(udf.drop(columns=_udrop, errors="ignore"), use_container_width=True, hide_index=True)
+            _hide_fixtures = [c for c in ("_g1", "_g2", "_ck", "Round") if c in udf.columns]
+            st.dataframe(udf.drop(columns=_hide_fixtures, errors="ignore"), use_container_width=True, hide_index=True)
+
+            st.subheader("📋 Clash details (plan & schedule)")
+            st.caption(
+                "**Team A / Team B** in player columns follow the **Meeting** column (same order as the fixtures table). "
+                "Each row is one **game** (1–5) inside that clash."
+            )
+            _gn_u = st.session_state.get("group_names", {})
+            _sub_u = st.session_state.get("subgroup_names", DEFAULT_SUBGROUP_NAMES)
+            _dec_u = _sub_u.get("subgroup1", "Decider")
+            _chok_u = _sub_u.get("subgroup2", "Choker")
+            _pool_u = ["subgroup1", "subgroup2", "subgroup1", "subgroup2", "subgroup1"]
+            _td_u = st.session_state.get("tournament_data") or {}
+
+            def _tl_u(k):
+                return _gn_u.get(k, k)
+
+            def _pn_u(x):
+                return x.get("name", x) if isinstance(x, dict) else str(x)
+
+            def _fx_court(fx):
+                if not isinstance(fx, dict):
+                    return "—"
+                return str(fx.get("court") or "").strip() or "—"
+
+            def _fx_time(fx):
+                if not isinstance(fx, dict) or not fx:
+                    return "—"
+                sd = fx.get("start_datetime")
+                if sd:
+                    return str(sd).replace("T", " ")[:16]
+                d = str(fx.get("date") or "").strip()
+                t = str(fx.get("start_time") or "").strip()
+                if d or t:
+                    return f"{d} {t}".strip()
+                return "—"
+
+            _detail_rows = []
+            for _ui in range(len(udf)):
+                _ur = udf.iloc[_ui]
+                _g1k = str(_ur["_g1"])
+                _g2k = str(_ur["_g2"])
+                _ck_u = _ur.get("_ck") or fixt.canonical_clash_key(_g1k, _g2k)
+                _um = fixt.coerce_five_match_slots(_td_u.get(_ck_u, []))
+                _meet = f"{_ur['Team A']} vs {_ur['Team B']}"
+                _clash_no = _ui + 1
+
+                if str(_ur.get("Status")) == "Scheduled" and not fixt.upcoming_has_planned_lineup(_um):
+                    _detail_rows.append(
+                        {
+                            "Clash #": _clash_no,
+                            "Game #": "—",
+                            "Meeting": _meet,
+                            "Pool": "—",
+                            "Players (Team A)": "—",
+                            "Players (Team B)": "—",
+                            "Court": "—",
+                            "Time": "—",
+                            "Result": "No plan saved yet",
+                        }
+                    )
+                    continue
+
+                for _gi in range(5):
+                    _gm = _um[_gi]
+                    _mt = _dec_u if _pool_u[_gi] == "subgroup1" else _chok_u
+                    _pl = _gm.get("players") or {}
+                    _a = ", ".join(_pn_u(n) for n in (_pl.get("g1") or [])) or "—"
+                    _b = ", ".join(_pn_u(n) for n in (_pl.get("g2") or [])) or "—"
+                    _fx = _gm.get("fixture") or {}
+                    _court = _fx_court(_fx)
+                    _time = _fx_time(_fx)
+
+                    if fixt.normalize_match_winner(_gm) is not None:
+                        _w = fixt.normalize_match_winner(_gm)
+                        _wt = _g1k if _w == "g1" else _g2k
+                        _res = (
+                            f"{_tl_u(_wt)} wins · {_gm.get('score_display', '—')} · {_gm.get('points', 0)} pts"
+                        )
+                    elif fixt.has_lineup(_gm) or _gm.get("planned"):
+                        _res = "Planned"
+                    else:
+                        continue
+
+                    _detail_rows.append(
+                        {
+                            "Clash #": _clash_no,
+                            "Game #": _gi + 1,
+                            "Meeting": _meet,
+                            "Pool": _mt,
+                            "Players (Team A)": _a,
+                            "Players (Team B)": _b,
+                            "Court": _court,
+                            "Time": _time,
+                            "Result": _res,
+                        }
+                    )
+
+            if _detail_rows:
+                _ddf = pd.DataFrame(_detail_rows)
+                st.dataframe(_ddf, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No planned or recorded games to list yet.")
 
         if not sched:
-            st.info("💡 Generate **Matches** (schedule) to attach dates, times, and rounds to each fixture.")
+            st.caption(
+                "💡 Use **Matches** to build a tournament-wide schedule, or **Record → Plan lineup & schedule** to set venue and time per game."
+            )
 
 elif menu == "Standings":
     st.header("🏆 Standings · Points & qualification")
@@ -4768,33 +5068,102 @@ elif menu == "Standings":
                     f"Complete remaining clashes in **Record**."
                 )
             else:
-                qualified_teams = standings_display.head(2)
-                eliminated_teams = standings_display.tail(total_teams - 2)
+                qualified_teams = standings_display.head(4)
+                eliminated_teams = standings_display.tail(total_teams - 4) if total_teams > 4 else standings_display.iloc[0:0]
                 team_col = 'Team name'
                 pts_col = 'Points'
 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.success("✅ **QUALIFIED TEAMS**")
+                    st.success("✅ **TOP 4 — KNOCKOUT**")
                     for idx, team in qualified_teams.iterrows():
-                        st.write(f"🥇 **{team[team_col]}** - {team[pts_col]} pts (Set diff: {team.get('Set difference', 0)}, Pt diff: {team.get('Points difference', 0)})")
+                        st.write(f"**#{idx + 1} {team[team_col]}** — {team[pts_col]} pts (Set diff: {team.get('Set difference', 0)}, Pt diff: {team.get('Points difference', 0)})")
                 with col2:
-                    st.error("❌ **ELIMINATED TEAMS**")
-                    for idx, team in eliminated_teams.iterrows():
-                        st.write(f"💔 **{team[team_col]}** - {team[pts_col]} pts (Set diff: {team.get('Set difference', 0)}, Pt diff: {team.get('Points difference', 0)})")
+                    st.error("❌ **ELIMINATED**")
+                    if eliminated_teams.empty:
+                        st.caption("— (only four teams in this league)")
+                    else:
+                        for idx, team in eliminated_teams.iterrows():
+                            st.write(f"💔 **{team[team_col]}** - {team[pts_col]} pts (Set diff: {team.get('Set difference', 0)}, Pt diff: {team.get('Points difference', 0)})")
+
+                st.divider()
+                st.subheader("🥇 Knockout (semi-finals & final)")
+                st.caption(
+                    "Seeding: **#1 vs #4** and **#2 vs #3**. Record scores under **Record** (bottom of **Record New Clash**)."
+                )
+                bracket = st.session_state.get("knockout_bracket") or {}
+                seeds = bracket.get("seeds") or []
+                groups = st.session_state.groups
+                gn = st.session_state.group_names
+                td = st.session_state.tournament_data or {}
+
+                if len(seeds) < 4:
+                    if st.button("Create knockout bracket from top 4", key="btn_init_knockout_standings"):
+                        new_seeds = knockout_seeds_from_standings(standings_display, groups, gn)
+                        if len(new_seeds) < 4:
+                            st.error("Could not resolve four team keys from the standings table.")
+                        else:
+                            st.session_state.knockout_bracket = {"seeds": new_seeds}
+                            auto_save()
+                            st.rerun()
+                else:
+                    s1a, s1b = seeds[0], seeds[3]
+                    s2a, s2b = seeds[1], seeds[2]
+                    st.markdown(
+                        f"**Semi-final 1:** #1 {gn.get(s1a, s1a)} vs #4 {gn.get(s1b, s1b)}  \n"
+                        f"**Semi-final 2:** #2 {gn.get(s2a, s2a)} vs #3 {gn.get(s2b, s2b)}"
+                    )
+                    m1 = fixt.coerce_five_match_slots(td.get(KO_SEMI1, []))
+                    m2 = fixt.coerce_five_match_slots(td.get(KO_SEMI2, []))
+                    mf = fixt.coerce_five_match_slots(td.get(KO_FINAL, []))
+                    lk1, rk1 = sorted([s1a, s1b], key=str)
+                    lk2, rk2 = sorted([s2a, s2b], key=str)
+                    w1 = fixt.clash_winner_group_key(m1, lk1, rk1) if fixt.is_clash_fully_recorded(m1) else None
+                    w2 = fixt.clash_winner_group_key(m2, lk2, rk2) if fixt.is_clash_fully_recorded(m2) else None
+                    wf1, wf2 = knockout_finalist_pair(td, seeds)
+                    lkf, rkf = (sorted([wf1, wf2], key=str) if wf1 and wf2 else (None, None))
+                    wfinal = None
+                    if wf1 and wf2 and lkf and rkf:
+                        wfinal = fixt.clash_winner_group_key(mf, lkf, rkf) if fixt.is_clash_fully_recorded(mf) else None
+
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.markdown("**Semi-final 1**")
+                        if w1:
+                            st.success(f"Winner: **{gn.get(w1, w1)}**")
+                        elif fixt.count_recorded_games(m1):
+                            st.warning("In progress")
+                        else:
+                            st.caption("Not started")
+                    with c2:
+                        st.markdown("**Semi-final 2**")
+                        if w2:
+                            st.success(f"Winner: **{gn.get(w2, w2)}**")
+                        elif fixt.count_recorded_games(m2):
+                            st.warning("In progress")
+                        else:
+                            st.caption("Not started")
+                    with c3:
+                        st.markdown("**Final**")
+                        if wfinal:
+                            st.success(f"**Champion: {gn.get(wfinal, wfinal)}**")
+                        elif wf1 and wf2:
+                            st.caption("Ready to play" if not fixt.count_recorded_games(mf) else "In progress")
+                        else:
+                            st.caption("Locked until both semis finish")
 
                 num_clashes = len([k for k in (st.session_state.tournament_data or {}) if '_vs_' in k])
                 total_possible_clashes = len(st.session_state.groups) * (len(st.session_state.groups) - 1) // 2
                 if num_clashes >= total_possible_clashes and total_possible_clashes > 0:
                     st.balloons()
-                    st.success(f"🎉 **TOURNAMENT COMPLETE!** All {total_possible_clashes} clashes played!")
+                    st.success(f"🎉 **ROUND-ROBIN COMPLETE!** All {total_possible_clashes} league clashes played.")
 
-                    st.subheader("🏆 Final Tournament Rankings")
+                    st.subheader("🏆 League table (final)")
                     for idx, team in standings_display.iterrows():
                         if idx == 0:
-                            st.write(f"🥇 **CHAMPION: {team[team_col]}** - {team[pts_col]} points")
+                            st.write(f"🥇 **1st: {team[team_col]}** - {team[pts_col]} points")
                         elif idx == 1:
-                            st.write(f"🥈 **RUNNER-UP: {team[team_col]}** - {team[pts_col]} points")
+                            st.write(f"🥈 **2nd: {team[team_col]}** - {team[pts_col]} points")
                         else:
                             st.write(f"#{idx+1} **{team[team_col]}** - {team[pts_col]} points")
         else:
@@ -4918,6 +5287,8 @@ elif menu == "Record":
     with tab1:
         st.subheader("Record New Clash")
         record_new_clash()
+        st.divider()
+        render_knockout_record_section()
     
     with tab2:
         if user_role == 'superuser':
