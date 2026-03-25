@@ -5021,16 +5021,12 @@ elif menu == PAGE_FIXTURES_RESULTS:
                             _s3 = _format_set_score(_ss.get("set3"))
                             st.caption(f"**Game points**: Set 1: {_s1} · Set 2: {_s2} · Set 3: {_s3}")
 
-        st.subheader("📅 Fixtures (Scheduled & In progress)")
+        st.subheader("📋 Clash details (plan & schedule)")
         if udf.empty:
-            st.caption("No pairings to show (need at least two groups with players).")
+            st.caption("No scheduled or in-progress pairings to show (need at least two groups with players).")
         else:
-            _hide_fixtures = [c for c in ("_g1", "_g2", "_ck", "Round") if c in udf.columns]
-            st.dataframe(udf.drop(columns=_hide_fixtures, errors="ignore"), use_container_width=True, hide_index=True)
-
-            st.subheader("📋 Clash details (plan & schedule)")
             st.caption(
-                "**Team A** is the first team in the row above; **P1 · A / P2 · A** are that team’s two players. "
+                "**Team A** is the first team in the pairing; **P1 · A / P2 · A** are that team’s two players. "
                 "**P1 · B / P2 · B** are **Team B**’s players. Each row is one **game** (1–5) in that clash."
             )
             _gn_u = st.session_state.get("group_names", {})
