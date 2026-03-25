@@ -4844,6 +4844,33 @@ elif menu == PAGE_FIXTURES_RESULTS:
                     xs.append(s)
             return (xs[0] if len(xs) > 0 else "—", xs[1] if len(xs) > 1 else "—")
 
+        def _fixture_clash_any_player_matches(matches, needle):
+            """Substring match in any of the four lineup slots in any recorded game (same idea as Record: search all sides)."""
+            if needle is None or str(needle).strip() == "":
+                return True
+            n = str(needle).strip().lower()
+            td_m = fixt.coerce_five_match_slots(matches)
+            for _gi in range(5):
+                m = td_m[_gi]
+                if fixt.normalize_match_winner(m) is None:
+                    continue
+                pl = m.get("players") or {}
+                a1, a2 = _fixture_player_pair_slots(pl.get("g1") or [])
+                b1, b2 = _fixture_player_pair_slots(pl.get("g2") or [])
+                for cell in (a1, a2, b1, b2):
+                    if n in str(cell).lower():
+                        return True
+            return False
+
+        def _fixture_detail_row_any_player_matches(row, needle, player_cols):
+            if needle is None or str(needle).strip() == "":
+                return True
+            n = str(needle).strip().lower()
+            for c in player_cols:
+                if n in str(row[c]).lower():
+                    return True
+            return False
+
         st.subheader("✅ Results — completed clashes")
         if cdf.empty:
             st.caption("No completed clashes yet. Finalize a clash under **Record** (all 5 games) to appear here.")
@@ -4870,8 +4897,58 @@ elif menu == PAGE_FIXTURES_RESULTS:
                     return f"{a}–{b}" if (a or b) else "—"
                 return "—"
 
-            for _idx in range(len(cdf)):
-                _row = cdf.iloc[_idx]
+            _td_cd = st.session_state.get("tournament_data") or {}
+            with st.expander("Filter clash details (team & player)", expanded=False):
+                _u_teams_res = sorted(
+                    set(cdf["Team A"].dropna().astype(str).tolist())
+                    | set(cdf["Team B"].dropna().astype(str).tolist())
+                )
+                _ut_res = ["(All)"] + _u_teams_res
+                _fc1, _fc2 = st.columns(2)
+                with _fc1:
+                    _fr_team = st.selectbox(
+                        "Team",
+                        _ut_res,
+                        key="fixtures_res_filter_team",
+                        help="Like **Record**: order does not matter — match if this team is **either** side of the clash.",
+                    )
+                with _fc2:
+                    _fr_player = st.text_input(
+                        "Player name contains",
+                        "",
+                        key="fixtures_res_filter_player",
+                        placeholder="Search all lineup slots",
+                    )
+                st.caption(
+                    "**Player** searches **P1**, **P2** on both sides in every recorded game of the clash. "
+                    "Leave empty to skip."
+                )
+
+            cdf_iter = cdf.copy()
+            if _fr_team != "(All)":
+                cdf_iter = cdf_iter[
+                    (cdf_iter["Team A"].astype(str) == str(_fr_team))
+                    | (cdf_iter["Team B"].astype(str) == str(_fr_team))
+                ]
+            if _fr_player and str(_fr_player).strip():
+
+                def _res_row_ok(row):
+                    ck = row.get("_ck") or fixt.canonical_clash_key(row["_g1"], row["_g2"])
+                    alt = fixt.find_clash_key(row["_g1"], row["_g2"], _td_cd)
+                    if alt:
+                        ck = alt
+                    m = fixt.coerce_five_match_slots(_td_cd.get(ck, []))
+                    return _fixture_clash_any_player_matches(m, _fr_player)
+
+                cdf_iter = cdf_iter[cdf_iter.apply(_res_row_ok, axis=1)]
+
+            if cdf_iter.empty:
+                st.warning("No clashes match the filters. Clear the player field or choose **(All)** for team.")
+            else:
+                st.caption(f"Showing **{len(cdf_iter)}** of **{len(cdf)}** clash(es).")
+
+            for _idx in range(len(cdf_iter)):
+                _row = cdf_iter.iloc[_idx]
                 _g1k = str(_row["_g1"])
                 _g2k = str(_row["_g2"])
                 _ck = _row.get("_ck") or fixt.find_clash_key(_g1k, _g2k, st.session_state.get("tournament_data") or {})
@@ -5056,7 +5133,53 @@ elif menu == PAGE_FIXTURES_RESULTS:
 
             if _detail_rows:
                 _ddf = pd.DataFrame(_detail_rows)
-                st.dataframe(_ddf, use_container_width=True, hide_index=True)
+                _player_cols_fix = ("P1 · A", "P2 · A", "P1 · B", "P2 · B")
+                with st.expander("Filter clash details (team & player)", expanded=False):
+                    _u_teams_up = sorted(
+                        set(_ddf["Team A"].dropna().astype(str).tolist())
+                        | set(_ddf["Team B"].dropna().astype(str).tolist())
+                    )
+                    _ut_up = ["(All)"] + _u_teams_up
+                    _dfc1, _dfc2 = st.columns(2)
+                    with _dfc1:
+                        _fu_team = st.selectbox(
+                            "Team",
+                            _ut_up,
+                            key="fixtures_up_filter_team",
+                            help="Like **Record**: **Team A** or **Team B** in the row — order does not matter.",
+                        )
+                    with _dfc2:
+                        _fu_player = st.text_input(
+                            "Player name contains",
+                            "",
+                            key="fixtures_up_filter_player",
+                            placeholder="Search all player columns",
+                        )
+                    st.caption(
+                        "**Player** matches if the text appears in **any** of the four player slots on that row."
+                    )
+
+                _ddf_show = _ddf.copy()
+                if _fu_team != "(All)":
+                    _ddf_show = _ddf_show[
+                        (_ddf_show["Team A"].astype(str) == str(_fu_team))
+                        | (_ddf_show["Team B"].astype(str) == str(_fu_team))
+                    ]
+                if _fu_player and str(_fu_player).strip():
+                    _ddf_show = _ddf_show[
+                        _ddf_show.apply(
+                            lambda r, nc=_fu_player, pc=_player_cols_fix: _fixture_detail_row_any_player_matches(
+                                r, nc, pc
+                            ),
+                            axis=1,
+                        )
+                    ]
+
+                if _ddf_show.empty:
+                    st.warning("No rows match the filters. Clear the player field or choose **(All)** for team.")
+                else:
+                    st.caption(f"Showing **{len(_ddf_show)}** of **{len(_ddf)}** row(s).")
+                st.dataframe(_ddf_show, use_container_width=True, hide_index=True)
             else:
                 st.caption("No planned or recorded games to list yet.")
 
