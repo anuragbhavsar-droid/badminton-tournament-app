@@ -2792,9 +2792,25 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True, st
                 # Set 1
                 set1_col1, set1_col2, set1_col3 = st.columns([1, 1, 2])
                 with set1_col1:
-                    set1_g1 = st.number_input(f"Set 1 - {g1}", min_value=0, max_value=30, value=0, key=f"{mode}_set1_g1_{i}_{widget_key_suffix}")
+                    set1_g1 = st.number_input(
+                        f"Set 1 - {g1}",
+                        min_value=0,
+                        max_value=30,
+                        value=0,
+                        step=1,
+                        format="%d",
+                        key=f"{mode}_set1_g1_{i}_{widget_key_suffix}",
+                    )
                 with set1_col2:
-                    set1_g2 = st.number_input(f"Set 1 - {g2}", min_value=0, max_value=30, value=0, key=f"{mode}_set1_g2_{i}_{widget_key_suffix}")
+                    set1_g2 = st.number_input(
+                        f"Set 1 - {g2}",
+                        min_value=0,
+                        max_value=30,
+                        value=0,
+                        step=1,
+                        format="%d",
+                        key=f"{mode}_set1_g2_{i}_{widget_key_suffix}",
+                    )
                 with set1_col3:
                     if set1_g1 > set1_g2:
                         st.success(f"✅ {g1} wins Set 1")
@@ -2806,9 +2822,25 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True, st
                 # Set 2
                 set2_col1, set2_col2, set2_col3 = st.columns([1, 1, 2])
                 with set2_col1:
-                    set2_g1 = st.number_input(f"Set 2 - {g1}", min_value=0, max_value=30, value=0, key=f"{mode}_set2_g1_{i}_{widget_key_suffix}")
+                    set2_g1 = st.number_input(
+                        f"Set 2 - {g1}",
+                        min_value=0,
+                        max_value=30,
+                        value=0,
+                        step=1,
+                        format="%d",
+                        key=f"{mode}_set2_g1_{i}_{widget_key_suffix}",
+                    )
                 with set2_col2:
-                    set2_g2 = st.number_input(f"Set 2 - {g2}", min_value=0, max_value=30, value=0, key=f"{mode}_set2_g2_{i}_{widget_key_suffix}")
+                    set2_g2 = st.number_input(
+                        f"Set 2 - {g2}",
+                        min_value=0,
+                        max_value=30,
+                        value=0,
+                        step=1,
+                        format="%d",
+                        key=f"{mode}_set2_g2_{i}_{widget_key_suffix}",
+                    )
                 with set2_col3:
                     if set2_g1 > set2_g2:
                         st.success(f"✅ {g1} wins Set 2")
@@ -2828,11 +2860,15 @@ def record_clash_matches(g1, g2, mode="new", clash_key=None, show_intro=True, st
                 with set3_col1:
                     set3_g1 = st.number_input(f"Set 3 - {g1}", 
                                             min_value=0, max_value=30, value=0, 
+                                            step=1,
+                                            format="%d",
                                             disabled=match_decided,
                                             key=f"{mode}_set3_g1_{i}_{widget_key_suffix}")
                 with set3_col2:
                     set3_g2 = st.number_input(f"Set 3 - {g2}", 
                                             min_value=0, max_value=30, value=0, 
+                                            step=1,
+                                            format="%d",
                                             disabled=match_decided,
                                             key=f"{mode}_set3_g2_{i}_{widget_key_suffix}")
                 with set3_col3:
@@ -5025,7 +5061,7 @@ elif menu == PAGE_FIXTURES:
                 return "—"
 
             _detail_rows = []
-            _show_time_col = is_authenticated() and get_current_user_role() == "superuser"
+            _show_time_col = True
             for _ui in range(len(udf)):
                 _ur = udf.iloc[_ui]
                 _g1k = str(_ur["_g1"])
