@@ -347,9 +347,14 @@ _inject_custom_css()
 
 
 # Nav page ids (labels shown on sidebar / mobile menu)
-PAGE_FIXTURES_RESULTS = "Fixtures and Results"
+PAGE_FIXTURES = "Fixtures"
+PAGE_RESULTS = "Results"
 PAGE_LEADERBOARD = "Leaderboard"
-_LEGACY_NAV_MENU = {"Home": PAGE_FIXTURES_RESULTS, "Stats": PAGE_LEADERBOARD}
+_LEGACY_NAV_MENU = {
+    "Home": PAGE_FIXTURES,
+    "Stats": PAGE_LEADERBOARD,
+    "Fixtures and Results": PAGE_FIXTURES,
+}
 
 
 def _nav_sync_session(available_pages):
@@ -369,8 +374,8 @@ def render_sidebar_navigation(available_pages):
     Returns current menu id (str).
     """
     if not available_pages:
-        st.session_state.nav_menu = PAGE_FIXTURES_RESULTS
-        return PAGE_FIXTURES_RESULTS
+        st.session_state.nav_menu = PAGE_FIXTURES
+        return PAGE_FIXTURES
     _nav_sync_session(available_pages)
     with st.sidebar.container(key="nav_pages"):
         st.markdown(
@@ -496,7 +501,7 @@ def get_current_user_role():
 def can_access_page(page_name):
     """Check if current user can access a specific page"""
     # Public pages - accessible to everyone (including guests)
-    public_pages = ["Teams", "Standings", PAGE_FIXTURES_RESULTS, PAGE_LEADERBOARD]
+    public_pages = ["Teams", "Standings", PAGE_FIXTURES, PAGE_RESULTS, PAGE_LEADERBOARD]
 
     if page_name in public_pages:
         return True
@@ -547,7 +552,7 @@ def login_page():
                     st.error('User not found')
         st.markdown("---")
         st.caption(
-            f"You can view **Teams**, **Standings**, **{PAGE_FIXTURES_RESULTS}**, and **{PAGE_LEADERBOARD}** without logging in."
+            f"You can view **Teams**, **Standings**, **{PAGE_FIXTURES}**, **{PAGE_RESULTS}**, and **{PAGE_LEADERBOARD}** without logging in."
         )
         if st.button('🌐 Continue as Guest', use_container_width=True):
             st.session_state.public_access = True
@@ -802,7 +807,8 @@ if not is_authenticated() and not st.session_state.get('public_access', False):
 available_pages = []
 # ICC-style hubs: Fixtures & results landing, Warm-Ups, Matches, Teams, Standings, Leaderboard, …
 all_pages = [
-    PAGE_FIXTURES_RESULTS,
+    PAGE_FIXTURES,
+    PAGE_RESULTS,
     "Warm-Ups",
     "Matches",
     "Teams",
@@ -4815,13 +4821,12 @@ elif menu == "Matches":
                 st.code(schedule_text, language="text")
                 st.info("Schedule formatted for copying above ☝️")
 
-# --- TAB 4: STANDINGS ---
-elif menu == PAGE_FIXTURES_RESULTS:
-    st.header(f"📋 {PAGE_FIXTURES_RESULTS}")
+# --- PAGE: RESULTS ---
+elif menu == PAGE_RESULTS:
+    st.header(f"📋 {PAGE_RESULTS}")
     st.markdown(
-        "**Clash lifecycle:** **Scheduled** (no plan yet) → **Planned** (lineups saved under **Record → Plan lineup & schedule**) → "
-        "**In progress** (1–4 games recorded) → **Completed** (all 5 games). "
-        "Open **Clash details (plan & schedule)** below for lineups, courts, and times saved from **Record**."
+        "**Results** update from recorded games in **Record**. "
+        "Rows show **Interim** progress until all 5 games are completed."
     )
     if not st.session_state.groups or not any(st.session_state.groups.values()):
         st.info("Create teams in **Warm-Ups** or **Squads** to see fixtures.")
@@ -4873,12 +4878,15 @@ elif menu == PAGE_FIXTURES_RESULTS:
 
         st.subheader("✅ Results — completed clashes")
         if cdf.empty:
-            st.caption("No completed clashes yet. Finalize a clash under **Record** (all 5 games) to appear here.")
+            st.caption("No clash results yet. A clash appears here as soon as at least one game is recorded in **Record**.")
         else:
             _hide_results = [c for c in ("_g1", "_g2", "_ck", "Round", "Scheduled window") if c in cdf.columns]
             st.dataframe(cdf.drop(columns=_hide_results, errors="ignore"), use_container_width=True, hide_index=True)
             st.subheader("📋 Clash details")
-            st.caption("First level: result summary. Second level: player names and set-by-set game points from match data.")
+            st.caption(
+                "First level: result summary. Second level: player names and set-by-set game points from match data. "
+                "**Completion** shows **Interim (decided)** until all 5 games are recorded."
+            )
             _gn = st.session_state.get("group_names", {})
             _subgroup = st.session_state.get("subgroup_names", DEFAULT_SUBGROUP_NAMES)
             _dec_label = _subgroup.get("subgroup1", "Decider")
@@ -4897,56 +4905,7 @@ elif menu == PAGE_FIXTURES_RESULTS:
                     return f"{a}–{b}" if (a or b) else "—"
                 return "—"
 
-            _td_cd = st.session_state.get("tournament_data") or {}
-            with st.expander("Filter clash details (team & player)", expanded=False):
-                _u_teams_res = sorted(
-                    set(cdf["Team A"].dropna().astype(str).tolist())
-                    | set(cdf["Team B"].dropna().astype(str).tolist())
-                )
-                _ut_res = ["(All)"] + _u_teams_res
-                _fc1, _fc2 = st.columns(2)
-                with _fc1:
-                    _fr_team = st.selectbox(
-                        "Team",
-                        _ut_res,
-                        key="fixtures_res_filter_team",
-                        help="Like **Record**: order does not matter — match if this team is **either** side of the clash.",
-                    )
-                with _fc2:
-                    _fr_player = st.text_input(
-                        "Player name contains",
-                        "",
-                        key="fixtures_res_filter_player",
-                        placeholder="Search all lineup slots",
-                    )
-                st.caption(
-                    "**Player** searches **P1**, **P2** on both sides in every recorded game of the clash. "
-                    "Leave empty to skip."
-                )
-
             cdf_iter = cdf.copy()
-            if _fr_team != "(All)":
-                cdf_iter = cdf_iter[
-                    (cdf_iter["Team A"].astype(str) == str(_fr_team))
-                    | (cdf_iter["Team B"].astype(str) == str(_fr_team))
-                ]
-            if _fr_player and str(_fr_player).strip():
-
-                def _res_row_ok(row):
-                    ck = row.get("_ck") or fixt.canonical_clash_key(row["_g1"], row["_g2"])
-                    alt = fixt.find_clash_key(row["_g1"], row["_g2"], _td_cd)
-                    if alt:
-                        ck = alt
-                    m = fixt.coerce_five_match_slots(_td_cd.get(ck, []))
-                    return _fixture_clash_any_player_matches(m, _fr_player)
-
-                cdf_iter = cdf_iter[cdf_iter.apply(_res_row_ok, axis=1)]
-
-            if cdf_iter.empty:
-                st.warning("No clashes match the filters. Clear the player field or choose **(All)** for team.")
-            else:
-                st.caption(f"Showing **{len(cdf_iter)}** of **{len(cdf)}** clash(es).")
-
             for _idx in range(len(cdf_iter)):
                 _row = cdf_iter.iloc[_idx]
                 _g1k = str(_row["_g1"])
@@ -4957,34 +4916,6 @@ elif menu == PAGE_FIXTURES_RESULTS:
                 )
                 _title = f"{_row['Team A']} vs {_row['Team B']}"
                 with st.expander(f"🏸 {_title}", expanded=False):
-                    # Clash-level: player details and result for each game (visible without opening game expanders)
-                    st.markdown("**Player details by game**")
-                    for _i in range(5):
-                        _m = _matches[_i]
-                        if fixt.normalize_match_winner(_m) is None:
-                            continue
-                        _mt = _dec_label if _match_pool_type[_i] == "subgroup1" else _chok_label
-                        _w = fixt.normalize_match_winner(_m)
-                        _win_team = _g1k if _w == "g1" else _g2k
-                        _pl = _m.get("players") or {}
-                        _g1_names = _pl.get("g1") or []
-                        _g2_names = _pl.get("g2") or []
-                        _ap1, _ap2 = _fixture_player_pair_slots(_g1_names)
-                        _bp1, _bp2 = _fixture_player_pair_slots(_g2_names)
-                        st.markdown(
-                            f"**Game {_i + 1}** ({_mt}) → Winner: **{_team_label(_win_team)}** "
-                            f"{_m.get('score_display', '')} ({_m.get('points', 0)} pts)"
-                        )
-                        _pc1, _pc2 = st.columns(2)
-                        with _pc1:
-                            st.caption(f"**{_team_label(_g1k)}**")
-                            st.caption(f"P1 · {_ap1}")
-                            st.caption(f"P2 · {_ap2}")
-                        with _pc2:
-                            st.caption(f"**{_team_label(_g2k)}**")
-                            st.caption(f"P1 · {_bp1}")
-                            st.caption(f"P2 · {_bp2}")
-                    st.divider()
                     st.markdown("**Per-game detail** *(expand for set scores)*")
                     for _i in range(5):
                         _m = _matches[_i]
@@ -5021,7 +4952,44 @@ elif menu == PAGE_FIXTURES_RESULTS:
                             _s3 = _format_set_score(_ss.get("set3"))
                             st.caption(f"**Game points**: Set 1: {_s1} · Set 2: {_s2} · Set 3: {_s3}")
 
-        st.subheader("📋 Clash details (plan & schedule)")
+        
+
+elif menu == PAGE_FIXTURES:
+    st.header(f"📋 {PAGE_FIXTURES}")
+    st.markdown(
+        "**Clash lifecycle:** **Scheduled** (no plan yet) → **Planned** (lineups saved under **Record → Plan lineup & schedule**) → "
+        "**In progress** (1–4 games recorded) → **Completed** (all 5 games)."
+    )
+    if not st.session_state.groups or not any(st.session_state.groups.values()):
+        st.info("Create teams in **Warm-Ups** or **Squads** to see fixtures.")
+    else:
+        sched = st.session_state.get("tournament_schedule") or []
+        _cdf_f, udf = fixt.build_completed_and_upcoming(
+            st.session_state.groups,
+            st.session_state.get("group_names", {}),
+            st.session_state.get("tournament_data") or {},
+            sched,
+        )
+
+        def _fixture_player_pair_slots(pl_list):
+            xs = []
+            for n in pl_list or []:
+                s = n.get("name", n) if isinstance(n, dict) else str(n)
+                s = (s or "").strip()
+                if s:
+                    xs.append(s)
+            return (xs[0] if len(xs) > 0 else "—", xs[1] if len(xs) > 1 else "—")
+
+        def _fixture_detail_row_any_player_matches(row, needle, player_cols):
+            if needle is None or str(needle).strip() == "":
+                return True
+            n = str(needle).strip().lower()
+            for c in player_cols:
+                if n in str(row[c]).lower():
+                    return True
+            return False
+
+        st.subheader("📋 Fixtures Scheduled")
         if udf.empty:
             st.caption("No scheduled or in-progress pairings to show (need at least two groups with players).")
         else:
@@ -5038,9 +5006,6 @@ elif menu == PAGE_FIXTURES_RESULTS:
 
             def _tl_u(k):
                 return _gn_u.get(k, k)
-
-            def _pn_u(x):
-                return x.get("name", x) if isinstance(x, dict) else str(x)
 
             def _fx_court(fx):
                 if not isinstance(fx, dict):
@@ -5060,6 +5025,7 @@ elif menu == PAGE_FIXTURES_RESULTS:
                 return "—"
 
             _detail_rows = []
+            _show_time_col = is_authenticated() and get_current_user_role() == "superuser"
             for _ui in range(len(udf)):
                 _ur = udf.iloc[_ui]
                 _g1k = str(_ur["_g1"])
@@ -5071,22 +5037,22 @@ elif menu == PAGE_FIXTURES_RESULTS:
                 _tb_name = _ur["Team B"]
 
                 if str(_ur.get("Status")) == "Scheduled" and not fixt.upcoming_has_planned_lineup(_um):
-                    _detail_rows.append(
-                        {
-                            "Clash #": _clash_no,
-                            "Game #": "—",
-                            "Team A": _ta_name,
-                            "Team B": _tb_name,
-                            "Pool": "—",
-                            "P1 · A": "—",
-                            "P2 · A": "—",
-                            "P1 · B": "—",
-                            "P2 · B": "—",
-                            "Court": "—",
-                            "Time": "—",
-                            "Result": "No plan saved yet",
-                        }
-                    )
+                    _row_sched = {
+                        "Clash #": _clash_no,
+                        "Game #": "—",
+                        "Team A": _ta_name,
+                        "Team B": _tb_name,
+                        "Pool": "—",
+                        "P1 · A": "—",
+                        "P2 · A": "—",
+                        "P1 · B": "—",
+                        "P2 · B": "—",
+                        "Court": "—",
+                        "Result": "No plan saved yet",
+                    }
+                    if _show_time_col:
+                        _row_sched["Time"] = "—"
+                    _detail_rows.append(_row_sched)
                     continue
 
                 for _gi in range(5):
@@ -5102,30 +5068,28 @@ elif menu == PAGE_FIXTURES_RESULTS:
                     if fixt.normalize_match_winner(_gm) is not None:
                         _w = fixt.normalize_match_winner(_gm)
                         _wt = _g1k if _w == "g1" else _g2k
-                        _res = (
-                            f"{_tl_u(_wt)} wins · {_gm.get('score_display', '—')} · {_gm.get('points', 0)} pts"
-                        )
+                        _res = f"{_tl_u(_wt)} wins · {_gm.get('score_display', '—')} · {_gm.get('points', 0)} pts"
                     elif fixt.has_lineup(_gm) or _gm.get("planned"):
                         _res = "Planned"
                     else:
                         continue
 
-                    _detail_rows.append(
-                        {
-                            "Clash #": _clash_no,
-                            "Game #": _gi + 1,
-                            "Team A": _ta_name,
-                            "Team B": _tb_name,
-                            "Pool": _mt,
-                            "P1 · A": _a1,
-                            "P2 · A": _a2,
-                            "P1 · B": _b1,
-                            "P2 · B": _b2,
-                            "Court": _court,
-                            "Time": _time,
-                            "Result": _res,
-                        }
-                    )
+                    _row_game = {
+                        "Clash #": _clash_no,
+                        "Game #": _gi + 1,
+                        "Team A": _ta_name,
+                        "Team B": _tb_name,
+                        "Pool": _mt,
+                        "P1 · A": _a1,
+                        "P2 · A": _a2,
+                        "P1 · B": _b1,
+                        "P2 · B": _b2,
+                        "Court": _court,
+                        "Result": _res,
+                    }
+                    if _show_time_col:
+                        _row_game["Time"] = _time
+                    _detail_rows.append(_row_game)
 
             if _detail_rows:
                 _ddf = pd.DataFrame(_detail_rows)
@@ -5151,9 +5115,7 @@ elif menu == PAGE_FIXTURES_RESULTS:
                             key="fixtures_up_filter_player",
                             placeholder="Search all player columns",
                         )
-                    st.caption(
-                        "**Player** matches if the text appears in **any** of the four player slots on that row."
-                    )
+                    st.caption("**Player** matches if the text appears in **any** of the four player slots on that row.")
 
                 _ddf_show = _ddf.copy()
                 if _fu_team != "(All)":
@@ -5650,5 +5612,5 @@ elif menu == "User Management":
         
         st.info(
             f"🌐 **Guest/Public Access:** Anyone can view **Teams** (skill levels hidden), **Standings**, "
-            f"**{PAGE_FIXTURES_RESULTS}**, and **{PAGE_LEADERBOARD}** without logging in."
+            f"**{PAGE_FIXTURES}**, **{PAGE_RESULTS}**, and **{PAGE_LEADERBOARD}** without logging in."
         )

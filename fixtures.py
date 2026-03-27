@@ -96,14 +96,31 @@ def migrate_clash_pair_to_canonical(tournament_data: Dict[str, Any], g1: Any, g2
 def find_clash_key(g1: str, g2: str, tournament_data: Dict[str, Any]) -> Optional[str]:
     if not tournament_data:
         return None
-    canon = canonical_clash_key(g1, g2)
-    if canon in tournament_data and tournament_data[canon]:
-        return canon
-    for a, b in ((g1, g2), (g2, g1)):
-        k = f"{a}_vs_{b}"
-        if k in tournament_data and tournament_data[k]:
-            return k
-    return None
+    keys = _all_td_keys_for_pair(tournament_data, g1, g2)
+    if not keys:
+        return None
+
+    # Pick best available key so completed clashes surface immediately:
+    # fully-recorded key wins; otherwise key with most recorded games.
+    best_key = None
+    best_full = False
+    best_count = -1
+    for k in keys:
+        slots = coerce_five_match_slots(tournament_data.get(k))
+        if not slots:
+            continue
+        full = is_clash_fully_recorded(slots)
+        count = count_recorded_games(slots)
+        if best_key is None:
+            best_key, best_full, best_count = k, full, count
+            continue
+        if full and not best_full:
+            best_key, best_full, best_count = k, full, count
+            continue
+        if full == best_full and count > best_count:
+            best_key, best_full, best_count = k, full, count
+
+    return best_key
 
 
 def normalize_match_winner(m: Optional[dict]) -> Optional[str]:
@@ -133,6 +150,19 @@ def is_clash_fully_recorded(matches: List[dict]) -> bool:
         if normalize_match_winner(matches[i]) is None:
             return False
     return True
+
+
+def is_clash_decided(matches: List[dict]) -> bool:
+    """
+    Clash is decided as soon as one side reaches 3 game wins (best-of-5),
+    or when all 5 games are fully recorded.
+    """
+    if not matches:
+        return False
+    m = coerce_five_match_slots(matches)
+    g1w = sum(1 for x in m[:5] if normalize_match_winner(x) == "g1")
+    g2w = sum(1 for x in m[:5] if normalize_match_winner(x) == "g2")
+    return g1w >= 3 or g2w >= 3 or is_clash_fully_recorded(m)
 
 
 def resolve_clash_group_keys(
@@ -264,6 +294,40 @@ def _last_game_timestamp(matches: List[dict]) -> str:
     return max(ts) if ts else "—"
 
 
+def _latest_recorded_game_meta(matches: List[dict]) -> Tuple[str, str, str]:
+    """
+    Return (match_type, team_a_players, team_b_players) for the latest recorded game.
+    match_type defaults by slot index: 1/3/5=Decider, 2/4=Choker.
+    """
+    latest_idx: Optional[int] = None
+    latest_ts = ""
+    for i, m in enumerate(matches[:5]):
+        if normalize_match_winner(m) is None:
+            continue
+        t = str((m.get("match_info") or {}).get("timestamp") or "")
+        if latest_idx is None or t > latest_ts:
+            latest_idx = i
+            latest_ts = t
+    if latest_idx is None:
+        return "—", "—", "—"
+
+    lm = matches[latest_idx] if latest_idx < len(matches) else {}
+    mt = "Decider" if latest_idx in (0, 2, 4) else "Choker"
+    pl = (lm.get("players") or {}) if isinstance(lm, dict) else {}
+
+    def _names(side: str) -> str:
+        arr = pl.get(side) or []
+        out: List[str] = []
+        for x in arr:
+            nm = x.get("name", x) if isinstance(x, dict) else str(x)
+            nm = str(nm).strip()
+            if nm:
+                out.append(nm)
+        return ", ".join(out) if out else "—"
+
+    return mt, _names("g1"), _names("g2")
+
+
 def _earliest_fixture_window_from_matches(matches: List[dict]) -> Optional[str]:
     """
     Display line for when/where from per-game fixture dicts (Record → Plan lineup & schedule).
@@ -345,11 +409,28 @@ def build_completed_and_upcoming(
         when_label = sched_label if sched_label else (plan_when if plan_when else "—")
         rnd = slot[2] if slot else None
 
-        if is_clash_fully_recorded(matches):
+        partial = count_recorded_games(matches)
+        if partial > 0:
             g1w = sum(1 for m in matches[:5] if m.get("winner") == "g1")
             g2w = sum(1 for m in matches[:5] if m.get("winner") == "g2")
-            winner_name = n1 if g1w > g2w else n2
+            mt_latest, _p1_latest, _p2_latest = _latest_recorded_game_meta(matches)
+            # Product rule: do not reveal winner in Results table until all 5 games are recorded.
+            if is_clash_fully_recorded(matches):
+                if g1w > g2w:
+                    winner_name = n1
+                elif g2w > g1w:
+                    winner_name = n2
+                else:
+                    winner_name = "TBD"
+            else:
+                winner_name = "TBD"
             games = f"{max(g1w, g2w)}–{min(g1w, g2w)}"
+            if is_clash_fully_recorded(matches):
+                completion_status = "Final (5/5)"
+            elif is_clash_decided(matches):
+                completion_status = f"Interim (decided, {partial}/5)"
+            else:
+                completion_status = f"Interim ({partial}/5)"
             completed_rows.append(
                 {
                     "Last recorded": _last_game_timestamp(matches[:5]),
@@ -357,6 +438,8 @@ def build_completed_and_upcoming(
                     "Team B": n2,
                     "Winner": winner_name,
                     "Games (wins)": games,
+                    "Completion": completion_status,
+                    "Latest match type": mt_latest,
                     "Round": rnd if rnd else "—",
                     "Scheduled window": when_label,
                     "_g1": g1,
@@ -365,10 +448,7 @@ def build_completed_and_upcoming(
                 }
             )
         else:
-            partial = count_recorded_games(matches)
-            if partial > 0:
-                status = f"In progress ({partial}/5 games)"
-            elif upcoming_has_planned_lineup(matches):
+            if upcoming_has_planned_lineup(matches):
                 status = "Planned"
             else:
                 status = "Scheduled"
