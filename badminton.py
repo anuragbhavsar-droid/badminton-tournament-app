@@ -1443,18 +1443,32 @@ def calculate_standings():
     stats = {}
     for group_key in groups.keys():
         stats[group_key] = {
-            'matches_played': 0,
+            'clashes_played': 0,
             'clash_won': 0,
             'points': 0,
             'sets_won': 0,
             'sets_lost': 0,
             'points_won': 0,
             'points_lost': 0,
-            'match_status': "—",
         }
 
+    def _winner_group_key_from_match(m, g1_key, g2_key):
+        """Resolve winner robustly from winner token or winner_display."""
+        w = fixt.normalize_match_winner(m)
+        if w == "g1":
+            return g1_key
+        if w == "g2":
+            return g2_key
+        wd = str((m or {}).get("winner_display") or "").strip()
+        if not wd:
+            return None
+        for k in (g1_key, g2_key):
+            if str(k) == wd or str(group_names.get(k, k)) == wd:
+                return k
+        return None
+
     td = st.session_state.tournament_data or {}
-    pair_best = {}
+    pair_merged = {}
     for clash_key, matches in td.items():
         if "_vs_" not in clash_key:
             continue
@@ -1465,33 +1479,44 @@ def calculate_standings():
         if not g1_key or not g2_key or g1_key not in stats or g2_key not in stats:
             continue
         pair = frozenset({g1_key, g2_key})
-        cand = (g1_key, g2_key, raw)
-        if pair not in pair_best:
-            pair_best[pair] = cand
-        else:
-            _o1, _o2, oldm = pair_best[pair]
-            nf, of = fixt.is_clash_fully_recorded(raw), fixt.is_clash_fully_recorded(oldm)
-            nc, oc = fixt.count_recorded_games(raw), fixt.count_recorded_games(oldm)
-            if nf and not of:
-                pair_best[pair] = cand
-            elif of and not nf:
-                pass
-            elif nc > oc:
-                pair_best[pair] = cand
+        if pair not in pair_merged:
+            pair_merged[pair] = (g1_key, g2_key, fixt.coerce_five_match_slots(raw))
+            continue
 
-    for _pair, (g1_key, g2_key, matches) in pair_best.items():
-        # Live update: count every meeting that has at least one recorded game
-        stats[g1_key]["matches_played"] += 1
-        stats[g2_key]["matches_played"] += 1
+        a1, a2, base = pair_merged[pair]
+        inc = fixt.coerce_five_match_slots(raw)
+        # Align incoming orientation to the stored pair anchor (a1 vs a2).
+        if (g1_key, g2_key) != (a1, a2):
+            inc = [fixt.flip_match_row_g1_g2(m) if fixt.normalize_match_winner(m) is not None else m for m in inc]
+
+        for i in range(5):
+            bm = base[i]
+            im = inc[i]
+            b_has = fixt.normalize_match_winner(bm) is not None
+            i_has = fixt.normalize_match_winner(im) is not None
+            if i_has and not b_has:
+                base[i] = im
+            elif i_has and b_has:
+                tb = str((bm.get("match_info") or {}).get("timestamp") or "")
+                ti = str((im.get("match_info") or {}).get("timestamp") or "")
+                if ti > tb:
+                    base[i] = im
+        pair_merged[pair] = (a1, a2, base)
+
+    for _pair, (g1_key, g2_key, matches) in pair_merged.items():
+        # Clash/game count: total number of recorded games per team
+        rec_games = fixt.count_recorded_games(matches)
+        stats[g1_key]["clashes_played"] += rec_games
+        stats[g2_key]["clashes_played"] += rec_games
 
         for m in matches:
-            if fixt.normalize_match_winner(m) is None:
+            wk = _winner_group_key_from_match(m, g1_key, g2_key)
+            if wk is None:
                 continue
-            w = fixt.normalize_match_winner(m)
-            if w == "g1":
+            if wk == g1_key:
                 stats[g1_key]["points"] += 2
                 stats[g1_key]["clash_won"] += 1
-            elif w == "g2":
+            elif wk == g2_key:
                 stats[g2_key]["points"] += 2
                 stats[g2_key]["clash_won"] += 1
             set_scores = m.get("set_scores") or {}
@@ -1513,42 +1538,12 @@ def calculate_standings():
                 stats[g2_key]["points_won"] += b
                 stats[g2_key]["points_lost"] += a
 
-    # Match status: scheduled vs in-progress (completed clashes excluded)
-    from itertools import combinations as _comb
-    _gks = [k for k in groups.keys() if groups.get(k)]
-    for gk in groups.keys():
-        n_sched = 0
-        n_ip = 0
-        for ga, gb in _comb(sorted(_gks, key=str), 2):
-            if gk not in (ga, gb):
-                continue
-            ck = fixt.canonical_clash_key(ga, gb)
-            td = st.session_state.tournament_data or {}
-            alt = fixt.find_clash_key(ga, gb, td)
-            if alt:
-                ck = alt
-            mfive = fixt.coerce_five_match_slots(td.get(ck, []))
-            if fixt.is_clash_fully_recorded(mfive):
-                continue
-            c = fixt.count_recorded_games(mfive)
-            if c == 0:
-                n_sched += 1
-            else:
-                n_ip += 1
-        parts = []
-        if n_sched:
-            parts.append(f"{n_sched} scheduled")
-        if n_ip:
-            parts.append(f"{n_ip} in progress")
-        stats[gk]["match_status"] = " · ".join(parts) if parts else "—"
-
     standings_data = []
     for group_key in groups.keys():
         s = stats[group_key]
         standings_data.append({
             'Team name': group_names.get(group_key, group_key),
-            'Matches played': s['matches_played'],
-            'Match status': s['match_status'],
+            'Clashes played': s['clashes_played'],
             'Clash won': s['clash_won'],
             'Points': s['points'],
             'No of Sets won': s['sets_won'],
@@ -5193,8 +5188,8 @@ elif menu == "Standings":
         if not standings_df.empty:
             st.subheader("📊 Current Standings")
             st.caption(
-                "**Standings** (Points, Clash won, Sets, rally points) update only when a clash is **Completed** (all 5 games). "
-                "**Match status** = how many of your meetings are **Scheduled** vs **In progress**."
+                "**Standings** show points, games won, sets and rally-point differentials. "
+                "**Clashes played** = total number of recorded games for that team."
             )
             standings_display = standings_df.copy()
             st.dataframe(standings_display, use_container_width=True, hide_index=True)
@@ -5203,13 +5198,13 @@ elif menu == "Standings":
             st.subheader("🎯 Qualification Analysis")
             
             total_teams = len(standings_df)
-            expected_matches_per_team = (total_teams - 1) if total_teams >= 2 else 0
-            mp_col = standings_display.get("Matches played")
+            expected_games_per_team = (total_teams - 1) * 5 if total_teams >= 2 else 0
+            cp_col = standings_display.get("Clashes played")
             all_played_full = (
                 total_teams >= 4
-                and expected_matches_per_team > 0
-                and mp_col is not None
-                and (mp_col >= expected_matches_per_team).all()
+                and expected_games_per_team > 0
+                and cp_col is not None
+                and (cp_col >= expected_games_per_team).all()
             )
 
             if total_teams < 4:
@@ -5217,7 +5212,7 @@ elif menu == "Standings":
             elif not all_played_full:
                 st.info(
                     f"📋 Qualification will be decided **after all matches are played**. "
-                    f"Each team plays **{expected_matches_per_team}** match(es) in the round-robin. "
+                    f"Each team should complete **{expected_games_per_team}** game(s) in the round-robin. "
                     f"Complete remaining clashes in **Record**."
                 )
             else:

@@ -170,7 +170,22 @@ def compute_standings_rows(
             "total_match_points": 0,
         }
 
-    pair_best = {}
+    def _winner_group_key_from_match(m: Dict[str, Any], g1_key: str, g2_key: str) -> Optional[str]:
+        """Resolve winner robustly from winner token or winner_display."""
+        w = _fx.normalize_match_winner(m)
+        if w == "g1":
+            return g1_key
+        if w == "g2":
+            return g2_key
+        wd = str((m or {}).get("winner_display") or "").strip()
+        if not wd:
+            return None
+        for k in (g1_key, g2_key):
+            if str(k) == wd or str(group_names.get(k, k)) == wd:
+                return k
+        return None
+
+    pair_merged = {}
     for clash_key, matches in (tournament_data or {}).items():
         if "_vs_" not in clash_key:
             continue
@@ -181,35 +196,44 @@ def compute_standings_rows(
         if not g1_key or not g2_key or g1_key not in stats or g2_key not in stats:
             continue
         pair = frozenset({g1_key, g2_key})
-        cand = (g1_key, g2_key, raw)
-        if pair not in pair_best:
-            pair_best[pair] = cand
-        else:
-            _o1, _o2, oldm = pair_best[pair]
-            nf, of = _fx.is_clash_fully_recorded(raw), _fx.is_clash_fully_recorded(oldm)
-            nc, oc = _fx.count_recorded_games(raw), _fx.count_recorded_games(oldm)
-            if nf and not of:
-                pair_best[pair] = cand
-            elif of and not nf:
-                pass
-            elif nc > oc:
-                pair_best[pair] = cand
+        if pair not in pair_merged:
+            pair_merged[pair] = (g1_key, g2_key, _fx.coerce_five_match_slots(raw))
+            continue
 
-    for _pair, (g1_key, g2_key, matches) in pair_best.items():
+        a1, a2, base = pair_merged[pair]
+        inc = _fx.coerce_five_match_slots(raw)
+        if (g1_key, g2_key) != (a1, a2):
+            inc = [_fx.flip_match_row_g1_g2(m) if _fx.normalize_match_winner(m) is not None else m for m in inc]
+
+        for i in range(5):
+            bm = base[i]
+            im = inc[i]
+            b_has = _fx.normalize_match_winner(bm) is not None
+            i_has = _fx.normalize_match_winner(im) is not None
+            if i_has and not b_has:
+                base[i] = im
+            elif i_has and b_has:
+                tb = str((bm.get("match_info") or {}).get("timestamp") or "")
+                ti = str((im.get("match_info") or {}).get("timestamp") or "")
+                if ti > tb:
+                    base[i] = im
+        pair_merged[pair] = (a1, a2, base)
+
+    for _pair, (g1_key, g2_key, matches) in pair_merged.items():
         # Live update: count every meeting that has at least one recorded game
         stats[g1_key]["matches_played"] += 1
         stats[g2_key]["matches_played"] += 1
 
         for m in matches:
-            w = _fx.normalize_match_winner(m)
-            if w is None:
+            wk = _winner_group_key_from_match(m, g1_key, g2_key)
+            if wk is None:
                 continue
             pts = int(m.get("points") or 0)
-            if w == "g1":
+            if wk == g1_key:
                 stats[g1_key]["points"] += 2
                 stats[g1_key]["clash_won"] += 1
                 stats[g1_key]["total_match_points"] += pts
-            elif w == "g2":
+            elif wk == g2_key:
                 stats[g2_key]["points"] += 2
                 stats[g2_key]["clash_won"] += 1
                 stats[g2_key]["total_match_points"] += pts
