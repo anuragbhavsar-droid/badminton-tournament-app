@@ -5096,10 +5096,9 @@ elif menu == PAGE_FIXTURES:
                     _court = _fx_court(_fx)
                     _time = _fx_time(_fx)
 
+                    # Fixtures page should show only pending/planned games, not completed game rows.
                     if fixt.normalize_match_winner(_gm) is not None:
-                        _w = fixt.normalize_match_winner(_gm)
-                        _wt = _g1k if _w == "g1" else _g2k
-                        _res = f"{_tl_u(_wt)} wins · {_gm.get('score_display', '—')} · {_gm.get('points', 0)} pts"
+                        continue
                     elif fixt.has_lineup(_gm) or _gm.get("planned"):
                         _res = "Planned"
                     else:

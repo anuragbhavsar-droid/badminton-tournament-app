@@ -450,12 +450,8 @@ def build_completed_and_upcoming(
 
         # Keep clashes visible in Fixtures until all 5 games are recorded.
         if not is_clash_fully_recorded(matches):
-            if partial > 0:
-                status = f"In progress ({partial}/5 games)"
-            elif upcoming_has_planned_lineup(matches):
-                status = "Planned"
-            else:
-                status = "Scheduled"
+            # Product rule: Fixtures should show only "Planned" status.
+            status = "Planned"
             upcoming_rows.append(
                 {
                     "_sort_key": when_label,
